@@ -1,0 +1,17 @@
+{
+  "code": "VALIDATION_FAILED",
+  "message": "Request validation failed.",
+  "details": [
+    {
+      "code": "PHONE_INVALID",
+      "message": "Invalid phone number.",
+      "field": "phoneNumber"
+    }
+  ],
+  "metadata": {
+    "contractVersion": "1.0",
+    "correlationId": "correlation-1",
+    "requestId": "request-1",
+    "timestampUtc": "2026-07-20T04:30:00Z"
+  }
+}

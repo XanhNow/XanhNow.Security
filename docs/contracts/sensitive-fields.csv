@@ -1,0 +1,14 @@
+type,property,category,redaction_rule
+TokenPairResponse,AccessToken,access-token,redact-full
+TokenPairResponse,RefreshToken,refresh-token,redact-full
+PasswordLoginRequest,Password,password,redact-full
+CompleteMfaLoginRequest,Otp,otp,redact-full
+PasskeyLoginBeginResponse,PublicKeyOptions,webauthn-public-key-options,redact-full
+PasskeyLoginFinishRequest,Credential,webauthn-credential,redact-full
+BeginPasskeyRegistrationResponse,PublicKeyOptions,webauthn-public-key-options,redact-full
+FinishPasskeyRegistrationRequest,Credential,webauthn-credential,redact-full
+BeginSmartOtpEnrollmentResponse,ProvisioningUri,totp-provisioning-uri,redact-full
+BeginSmartOtpEnrollmentResponse,ManualEntryKey,totp-manual-entry-key,redact-full
+VerifyStepUpRequest,Otp,otp,redact-full
+StepUpGrantResponse,StepUpGrant,step-up-grant,redact-full
+StartPhoneChangeRequest,StepUpGrant,step-up-grant,redact-full

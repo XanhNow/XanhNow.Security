@@ -1,0 +1,18 @@
+group,method,route,request,response,maturity,downstream
+Auth,POST,/api/v1/auth/register,RegisterRequest,RegisterResponse,CURRENT,Auth_Login_App
+Auth,POST,/api/v1/auth/login/password,PasswordLoginRequest,PasswordLoginResponse,CURRENT,Auth_Login_App;JWT_Refresh_Token_App
+Auth,POST,/api/v1/auth/login/mfa/complete,CompleteMfaLoginRequest,PasswordLoginResponse,COMPOSITE,Auth_Login_App;SmartOtp_App;JWT_Refresh_Token_App
+Auth,POST,/api/v1/auth/login/passkey/begin,PasskeyLoginBeginRequest,PasskeyLoginBeginResponse,COMPOSITE,Passkey_Provider_App
+Auth,POST,/api/v1/auth/login/passkey/finish,PasskeyLoginFinishRequest,PasswordLoginResponse,COMPOSITE,Passkey_Provider_App;JWT_Refresh_Token_App
+Account,GET,/api/v1/accounts/me/security-profile,,SecurityProfileResponse,CURRENT,XanhNow.Security projection
+Account,POST,/api/v1/accounts/{userId}/lock,AccountStateChangeRequest,AccountStateChangeResponse,PLANNED,Auth_Login_App;JWT_Refresh_Token_App
+Password,POST,/api/v1/password/change,ChangePasswordRequest,OperationAcceptedResponse,PLANNED,Auth_Login_App;JWT_Refresh_Token_App
+Phone,POST,/api/v1/phone/change/start,StartPhoneChangeRequest,OperationAcceptedResponse,PLANNED,Auth_Login_App;SmartOtp_App
+Recovery,POST,/api/v1/recovery/cases,StartRecoveryCaseRequest,RecoveryCaseResponse,COMPOSITE,All child apps
+Session,POST,/api/v1/sessions/refresh,RefreshSessionRequest,TokenPairResponse,CURRENT,JWT_Refresh_Token_App
+Session,GET,/api/v1/sessions,,PagedResponse<SessionSummaryResponse>,PLANNED,JWT_Refresh_Token_App
+Passkey,POST,/api/v1/passkeys/registration/begin,BeginPasskeyRegistrationRequest,BeginPasskeyRegistrationResponse,CURRENT,Passkey_Provider_App
+SmartOtp,POST,/api/v1/smart-otp/devices/enroll/begin,BeginSmartOtpEnrollmentRequest,BeginSmartOtpEnrollmentResponse,CURRENT,SmartOtp_App
+Policy,POST,/api/v1/policies/evaluate,EvaluatePolicyRequest,PolicyDecisionResponse,CURRENT,XanhNow.Security
+Health,GET,/health/live,,LiveHealthResponse,CURRENT,XanhNow.Security
+Health,GET,/health/ready,,ReadyHealthResponse,CURRENT,XanhNow.Security

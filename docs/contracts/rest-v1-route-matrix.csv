@@ -1,0 +1,11 @@
+method,route,auth,required_headers,response,error_model
+POST,/api/v1/auth/register,anonymous,X-Client-Id;X-Correlation-Id,ApiResponse<RegisterResponse>,ApiErrorResponse
+POST,/api/v1/auth/login/password,anonymous,X-Client-Id;X-Correlation-Id,ApiResponse<PasswordLoginResponse>,ApiErrorResponse
+POST,/api/v1/auth/login/mfa/complete,anonymous,X-Client-Id;X-Correlation-Id;Idempotency-Key,ApiResponse<PasswordLoginResponse>,ApiErrorResponse
+POST,/api/v1/sessions/refresh,refresh-token,X-Client-Id;X-Correlation-Id,ApiResponse<TokenPairResponse>,ApiErrorResponse
+GET,/api/v1/accounts/me/security-profile,bearer,X-Correlation-Id,ApiResponse<SecurityProfileResponse>,ApiErrorResponse
+POST,/api/v1/passkeys/registration/begin,bearer,X-Correlation-Id;Idempotency-Key,ApiResponse<BeginPasskeyRegistrationResponse>,ApiErrorResponse
+POST,/api/v1/smart-otp/devices/enroll/begin,bearer,X-Correlation-Id;Idempotency-Key,ApiResponse<BeginSmartOtpEnrollmentResponse>,ApiErrorResponse
+POST,/api/v1/policies/evaluate,internal-service,X-Correlation-Id,ApiResponse<PolicyDecisionResponse>,ApiErrorResponse
+GET,/health/live,operational,,LiveHealthResponse,ApiErrorResponse
+GET,/health/ready,operational,,ReadyHealthResponse,ApiErrorResponse
