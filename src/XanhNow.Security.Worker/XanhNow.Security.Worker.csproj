@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-XanhNow.Security.Worker-12e37fd3-5f9b-4f8e-81a3-f38b9b327c85</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\XanhNow.Security.Application\XanhNow.Security.Application.csproj" />
+    <ProjectReference Include="..\XanhNow.Security.Infrastructure\XanhNow.Security.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

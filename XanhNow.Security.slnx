@@ -1,0 +1,20 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/XanhNow.Security.Api/XanhNow.Security.Api.csproj" />
+    <Project Path="src/XanhNow.Security.Application/XanhNow.Security.Application.csproj" />
+    <Project Path="src/XanhNow.Security.Contracts/XanhNow.Security.Contracts.csproj" />
+    <Project Path="src/XanhNow.Security.Domain/XanhNow.Security.Domain.csproj" />
+    <Project Path="src/XanhNow.Security.Infrastructure/XanhNow.Security.Infrastructure.csproj" />
+    <Project Path="src/XanhNow.Security.Migrator/XanhNow.Security.Migrator.csproj" />
+    <Project Path="src/XanhNow.Security.Worker/XanhNow.Security.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/XanhNow.Security.Api.Tests/XanhNow.Security.Api.Tests.csproj" />
+    <Project Path="tests/XanhNow.Security.Application.Tests/XanhNow.Security.Application.Tests.csproj" />
+    <Project Path="tests/XanhNow.Security.ArchitectureTests/XanhNow.Security.ArchitectureTests.csproj" />
+    <Project Path="tests/XanhNow.Security.ContractTests/XanhNow.Security.ContractTests.csproj" />
+    <Project Path="tests/XanhNow.Security.Domain.Tests/XanhNow.Security.Domain.Tests.csproj" />
+    <Project Path="tests/XanhNow.Security.EndToEndTests/XanhNow.Security.EndToEndTests.csproj" />
+    <Project Path="tests/XanhNow.Security.IntegrationTests/XanhNow.Security.IntegrationTests.csproj" />
+  </Folder>
+</Solution>
