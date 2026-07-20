@@ -28,6 +28,21 @@ public sealed class OperationStepState : Entity<Guid>
     public static OperationStepState Create(Guid id, OperationTypeCode stepCode, bool required, DateTimeOffset createdAt)
         => new(id, stepCode, required, createdAt);
 
+    public static OperationStepState Restore(Guid id, OperationTypeCode stepCode, bool required, OperationStepStatus status, DateTimeOffset createdAt, DateTimeOffset? startedAt, DateTimeOffset? completedAt, string? failureCode)
+    {
+        return new OperationStepState
+        {
+            Id = Guard.NotEmpty(id, nameof(id)),
+            StepCode = stepCode,
+            Required = required,
+            Status = status,
+            CreatedAt = createdAt,
+            StartedAt = startedAt,
+            CompletedAt = completedAt,
+            FailureCode = failureCode
+        };
+    }
+
     public void MarkRunning(DateTimeOffset at)
     {
         if (Status != OperationStepStatus.Pending && Status != OperationStepStatus.RetryPending)

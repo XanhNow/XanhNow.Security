@@ -25,6 +25,10 @@ public sealed class ExceptionMappingBehavior<TRequest, TResponse> : IApplication
         {
             return await next(cancellationToken);
         }
+        catch (ConcurrencyConflictException ex)
+        {
+            return Result<TResponse>.Failure(Error.Conflict(SecurityErrorCodes.OperationConflict, ex.Message));
+        }
         catch (DomainException ex)
         {
             return Result<TResponse>.Failure(Error.Conflict(ex.Code, ex.Message));

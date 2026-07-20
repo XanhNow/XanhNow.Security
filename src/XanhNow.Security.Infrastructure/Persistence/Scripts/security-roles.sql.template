@@ -1,0 +1,25 @@
+﻿-- RB06 template only. Execute by approved DBA. Do not put passwords in this file.
+
+CREATE ROLE xanhnow_security_runtime NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE;
+CREATE ROLE xanhnow_security_migrator NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE;
+
+GRANT CONNECT ON DATABASE REPLACE_DATABASE TO xanhnow_security_runtime;
+GRANT CONNECT ON DATABASE REPLACE_DATABASE TO xanhnow_security_migrator;
+
+CREATE SCHEMA IF NOT EXISTS security AUTHORIZATION xanhnow_security_migrator;
+
+GRANT USAGE ON SCHEMA security TO xanhnow_security_runtime;
+GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA security TO xanhnow_security_runtime;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA security TO xanhnow_security_runtime;
+GRANT USAGE, CREATE ON SCHEMA security TO xanhnow_security_migrator;
+
+REVOKE ALL ON SCHEMA auth, token, passkey, auth_smart_otp
+  FROM xanhnow_security_runtime, xanhnow_security_migrator;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE xanhnow_security_migrator
+  IN SCHEMA security
+  GRANT SELECT, INSERT, UPDATE ON TABLES TO xanhnow_security_runtime;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE xanhnow_security_migrator
+  IN SCHEMA security
+  GRANT USAGE, SELECT ON SEQUENCES TO xanhnow_security_runtime;

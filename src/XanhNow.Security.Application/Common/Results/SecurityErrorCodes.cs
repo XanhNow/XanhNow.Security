@@ -10,5 +10,6 @@ public static class SecurityErrorCodes
     public const string PolicyDenied = "security.policy_denied";
     public const string DownstreamUnavailable = "security.downstream_unavailable";
     public const string OperationNotFound = "security.operation_not_found";
+    public const string OperationConflict = "security.operation_conflict";
     public const string Unexpected = "security.unexpected";
 }
