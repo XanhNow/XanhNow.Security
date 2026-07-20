@@ -1,0 +1,11 @@
+namespace XanhNow.Security.Domain.Common;
+
+public sealed class DomainException : Exception
+{
+    public DomainException(string code, string message) : base(message)
+    {
+        Code = Guard.NotBlank(code, nameof(code));
+    }
+
+    public string Code { get; }
+}
