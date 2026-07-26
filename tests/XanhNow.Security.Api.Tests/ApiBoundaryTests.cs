@@ -13,7 +13,7 @@ namespace XanhNow.Security.Api.Tests;
 public sealed class ApiBoundaryTests
 {
     [Fact]
-    public void Rb13_publishes_core_and_account_security_vertical_slice_actions()
+    public void Rb14_publishes_core_account_recovery_policy_and_step_up_actions()
     {
         var shellTypes = typeof(Program).Assembly.GetTypes()
             .Where(type => type.IsClass && !type.IsAbstract && type.IsAssignableTo(typeof(ApiControllerBase)))
@@ -37,13 +37,15 @@ public sealed class ApiBoundaryTests
 
         var expectedActionCounts = new Dictionary<string, int>
         {
-            ["AccountController"] = 4,
-            ["AuthController"] = 4,
+            ["AccountController"] = 5,
+            ["AuthController"] = 7,
             ["PasskeysController"] = 7,
             ["PasswordController"] = 4,
             ["PhoneController"] = 3,
-            ["SessionsController"] = 4,
-            ["SmartOtpController"] = 4
+            ["PolicyController"] = 1,
+            ["RecoveryController"] = 3,
+            ["SessionsController"] = 5,
+            ["SmartOtpController"] = 5
         };
 
         foreach (var shell in shellTypes)

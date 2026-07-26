@@ -12,3 +12,4 @@ public sealed record StartStepUpRequest(string Purpose, string TransactionDigest
 public sealed record StepUpChallengeResponse(string ChallengeId, string Purpose, DateTimeOffset ExpiresAtUtc);
 public sealed record VerifyStepUpRequest(string ChallengeId, [property: SensitiveData("otp")] string Otp);
 public sealed record StepUpGrantResponse(string ChallengeId, [property: SensitiveData("step-up-grant")] string StepUpGrant, string Purpose, DateTimeOffset ExpiresAtUtc);
+public sealed record IssueTransactionStepUpGrantRequest(string Audience, string Purpose, string TransactionId, string TransactionDigest, string CanonicalizationVersion, string ChallengeId, [property: SensitiveData("otp")] string Otp);

@@ -17,17 +17,26 @@ public sealed class AuthController : ApiControllerBase
     private readonly ApplicationExecutor<PasswordLoginCommand, PasswordLoginResult> _passwordLogin;
     private readonly ApplicationExecutor<BeginPasskeyLoginCommand, BeginPasskeyLoginResult> _beginPasskeyLogin;
     private readonly ApplicationExecutor<FinishPasskeyLoginCommand, PasswordLoginResult> _finishPasskeyLogin;
+    private readonly ApplicationExecutor<BeginLoginMfaCommand, LoginMfaChallengeResult> _beginLoginMfa;
+    private readonly ApplicationExecutor<CompleteLoginMfaCommand, ProtectedGrantResult> _completeLoginMfa;
+    private readonly ApplicationExecutor<CompletePasskeyLoginWithGrantCommand, ProtectedGrantResult> _completePasskeyLoginWithGrant;
 
     public AuthController(
         ApplicationExecutor<RegisterCommand, RegisterResult> register,
         ApplicationExecutor<PasswordLoginCommand, PasswordLoginResult> passwordLogin,
         ApplicationExecutor<BeginPasskeyLoginCommand, BeginPasskeyLoginResult> beginPasskeyLogin,
-        ApplicationExecutor<FinishPasskeyLoginCommand, PasswordLoginResult> finishPasskeyLogin)
+        ApplicationExecutor<FinishPasskeyLoginCommand, PasswordLoginResult> finishPasskeyLogin,
+        ApplicationExecutor<BeginLoginMfaCommand, LoginMfaChallengeResult> beginLoginMfa,
+        ApplicationExecutor<CompleteLoginMfaCommand, ProtectedGrantResult> completeLoginMfa,
+        ApplicationExecutor<CompletePasskeyLoginWithGrantCommand, ProtectedGrantResult> completePasskeyLoginWithGrant)
     {
         _register = register;
         _passwordLogin = passwordLogin;
         _beginPasskeyLogin = beginPasskeyLogin;
         _finishPasskeyLogin = finishPasskeyLogin;
+        _beginLoginMfa = beginLoginMfa;
+        _completeLoginMfa = completeLoginMfa;
+        _completePasskeyLoginWithGrant = completePasskeyLoginWithGrant;
     }
 
     [AllowAnonymous]
@@ -49,6 +58,24 @@ public sealed class AuthController : ApiControllerBase
     }
 
     [AllowAnonymous]
+    [HttpPost("login/mfa/begin")]
+    [EndpointMaturity("Current", "auth.login.mfa.begin")]
+    public async Task<ActionResult<ApiResponse<BeginMfaLoginResponse>>> BeginLoginMfaAsync(BeginMfaLoginRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _beginLoginMfa.ExecuteAsync(new BeginLoginMfaCommand(request.UserId, request.LoginOperationId, request.TransactionDigest), cancellationToken);
+        return FromApplicationResult(result, x => new BeginMfaLoginResponse(x.UserId, x.ChallengeId, x.Method, x.Purpose, x.ExpiresAtUtc));
+    }
+
+    [AllowAnonymous]
+    [HttpPost("login/mfa/complete")]
+    [EndpointMaturity("Current", "auth.login.mfa.complete")]
+    public async Task<ActionResult<ApiResponse<ProtectedGrantResponse>>> CompleteLoginMfaAsync(CompleteMfaLoginRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _completeLoginMfa.ExecuteAsync(new CompleteLoginMfaCommand(request.UserId, request.ChallengeId, request.Otp, request.Audience), cancellationToken);
+        return FromApplicationResult(result, MapGrant);
+    }
+
+    [AllowAnonymous]
     [HttpPost("login/passkey/begin")]
     [EndpointMaturity("Current", "auth.login.passkey.begin")]
     public async Task<ActionResult<ApiResponse<PasskeyLoginBeginResponse>>> BeginPasskeyLoginAsync(PasskeyLoginBeginRequest request, CancellationToken cancellationToken)
@@ -66,6 +93,15 @@ public sealed class AuthController : ApiControllerBase
         return FromApplicationResult(result, MapLogin);
     }
 
+    [AllowAnonymous]
+    [HttpPost("login/passkey/finish-grant")]
+    [EndpointMaturity("Current", "auth.login.passkey.finish_grant")]
+    public async Task<ActionResult<ApiResponse<ProtectedGrantResponse>>> FinishPasskeyLoginWithGrantAsync(PasskeyLoginFinishGrantRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _completePasskeyLoginWithGrant.ExecuteAsync(new CompletePasskeyLoginWithGrantCommand(request.CeremonyId, request.Credential.GetRawText(), request.Audience), cancellationToken);
+        return FromApplicationResult(result, MapGrant);
+    }
+
     private static DeviceContext? MapDevice(DeviceContextRequest? device)
         => device is null ? null : new DeviceContext(device.DeviceId, device.DeviceName, device.Platform, device.IpAddress, device.UserAgent);
 
@@ -76,4 +112,7 @@ public sealed class AuthController : ApiControllerBase
             result.Tokens is null ? null : new TokenPairResponse(result.Tokens.AccessToken, result.Tokens.RefreshToken, result.Tokens.AccessTokenExpiresAtUtc, result.Tokens.RefreshTokenExpiresAtUtc, result.Tokens.TokenType),
             result.Mfa is null ? null : new MfaChallengeResponse(result.Mfa.ChallengeId, result.Mfa.Method, result.Mfa.ExpiresAtUtc),
             result.ReasonCode);
+
+    private static ProtectedGrantResponse MapGrant(ProtectedGrantResult result)
+        => new(result.GrantId, result.Grant, result.GrantType, result.Audience, result.Purpose, result.ExpiresAtUtc);
 }

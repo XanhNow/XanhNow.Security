@@ -161,11 +161,27 @@ public static class SecurityApiServiceCollectionExtensions
         services.AddScoped<IRequestHandler<ConfirmPhoneChangeCommand, AccountSecurityOperationResult>, ConfirmPhoneChangeCommandHandler>();
         services.AddScoped<IRequestHandler<CancelPhoneChangeCommand, AccountSecurityOperationResult>, CancelPhoneChangeCommandHandler>();
         services.AddScoped<IRequestHandler<GetSecurityProfileQuery, SecurityProfileResult>, GetSecurityProfileQueryHandler>();
-        services.AddScoped<IRequestHandler<ChangeAccountStateCommand, AccountStateResult>, ChangeAccountStateCommandHandler>();
+        services.AddScoped<ChangeAccountStateCommandHandler>();
+        services.AddScoped<IRequestHandler<ChangeAccountStateCommand, AccountStateResult>>(sp => sp.GetRequiredService<ChangeAccountStateCommandHandler>());
         services.AddScoped<IRequestHandler<ListSessionsQuery, IReadOnlyCollection<SessionSummaryResult>>, ListSessionsQueryHandler>();
-        services.AddScoped<IRequestHandler<LogoutAllSessionsCommand, LogoutAllSessionsResult>, LogoutAllSessionsCommandHandler>();
+        services.AddScoped<LogoutAllSessionsCommandHandler>();
+        services.AddScoped<IRequestHandler<LogoutAllSessionsCommand, LogoutAllSessionsResult>>(sp => sp.GetRequiredService<LogoutAllSessionsCommandHandler>());
         services.AddScoped<IRequestHandler<RenamePasskeyCommand, PasskeyStateResult>, RenamePasskeyCommandHandler>();
         services.AddScoped<IRequestHandler<SetPasskeyEnabledCommand, PasskeyStateResult>, SetPasskeyEnabledCommandHandler>();
+        services.AddScoped<IRequestHandler<EvaluateSecurityPolicyCommand, PolicyDecisionResultDto>, EvaluateSecurityPolicyCommandHandler>();
+        services.AddScoped<IRequestHandler<IssueAuthGrantCommand, ProtectedGrantResult>, IssueAuthGrantCommandHandler>();
+        services.AddScoped<IRequestHandler<BeginLoginMfaCommand, LoginMfaChallengeResult>, BeginLoginMfaCommandHandler>();
+        services.AddScoped<IRequestHandler<CompleteLoginMfaCommand, ProtectedGrantResult>, CompleteLoginMfaCommandHandler>();
+        services.AddScoped<IRequestHandler<CompletePasskeyLoginWithGrantCommand, ProtectedGrantResult>, CompletePasskeyLoginWithGrantCommandHandler>();
+        services.AddScoped<IRequestHandler<IssueTransactionStepUpGrantCommand, ProtectedGrantResult>, IssueTransactionStepUpGrantCommandHandler>();
+        services.AddScoped<IRequestHandler<ReportLostPhoneCommand, RecoveryWorkflowResult>, ReportLostPhoneCommandHandler>();
+        services.AddScoped<IRequestHandler<StartAccountRecoveryCommand, RecoveryWorkflowResult>, StartAccountRecoveryCommandHandler>();
+        services.AddScoped<IRequestHandler<CompleteAccountRecoveryCommand, RecoveryWorkflowResult>, CompleteAccountRecoveryCommandHandler>();
+        services.AddScoped<IRequestHandler<ProtectAccountFromTakeoverCommand, AccountStateResult>, ProtectAccountFromTakeoverCommandHandler>();
+        services.AddScoped<IRequestHandler<CompositeLockUserCommand, AccountStateResult>, CompositeLockUserCommandHandler>();
+        services.AddScoped<IRequestHandler<CompositeUnlockUserCommand, AccountStateResult>, CompositeUnlockUserCommandHandler>();
+        services.AddScoped<IRequestHandler<CompositeLogoutAllCommand, LogoutAllSessionsResult>, CompositeLogoutAllCommandHandler>();
+        services.AddScoped<IRequestHandler<ResumeRecoveryOperationsCommand, RecoveryWorkerResult>, ResumeRecoveryOperationsCommandHandler>();
         return services;
     }
 }

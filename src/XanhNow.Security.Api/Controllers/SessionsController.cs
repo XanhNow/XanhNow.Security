@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using XanhNow.Security.Api.OpenApi;
+using XanhNow.Security.Api.Security;
 using XanhNow.Security.Application.Common.Requests;
 using XanhNow.Security.Application.Core;
 using XanhNow.Security.Contracts.Common.Enums;
@@ -17,17 +18,20 @@ public sealed class SessionsController : ApiControllerBase
     private readonly ApplicationExecutor<LogoutSessionCommand, LogoutSessionResult> _logout;
     private readonly ApplicationExecutor<ListSessionsQuery, IReadOnlyCollection<SessionSummaryResult>> _list;
     private readonly ApplicationExecutor<LogoutAllSessionsCommand, LogoutAllSessionsResult> _logoutAll;
+    private readonly ApplicationExecutor<CompositeLogoutAllCommand, LogoutAllSessionsResult> _compositeLogoutAll;
 
     public SessionsController(
         ApplicationExecutor<RefreshSessionCommand, TokenPairResult> refresh,
         ApplicationExecutor<LogoutSessionCommand, LogoutSessionResult> logout,
         ApplicationExecutor<ListSessionsQuery, IReadOnlyCollection<SessionSummaryResult>> list,
-        ApplicationExecutor<LogoutAllSessionsCommand, LogoutAllSessionsResult> logoutAll)
+        ApplicationExecutor<LogoutAllSessionsCommand, LogoutAllSessionsResult> logoutAll,
+        ApplicationExecutor<CompositeLogoutAllCommand, LogoutAllSessionsResult> compositeLogoutAll)
     {
         _refresh = refresh;
         _logout = logout;
         _list = list;
         _logoutAll = logoutAll;
+        _compositeLogoutAll = compositeLogoutAll;
     }
 
     [AllowAnonymous]
@@ -60,6 +64,15 @@ public sealed class SessionsController : ApiControllerBase
     public async Task<ActionResult<ApiResponse<LogoutAllSessionsResponse>>> LogoutAllAsync(LogoutAllSessionsRequest request, CancellationToken cancellationToken)
     {
         var result = await _logoutAll.ExecuteAsync(new LogoutAllSessionsCommand(CurrentUserIdOrEmpty(), request.ReasonCode, request.IncludeCurrentSession), cancellationToken);
+        return FromApplicationResult(result, x => new LogoutAllSessionsResponse(x.RevokedCount, x.RevokedAtUtc));
+    }
+
+    [Authorize(Policy = SecurityPolicyNames.Internal)]
+    [HttpPost("{userId:guid}/composite/logout-all")]
+    [EndpointMaturity("Current", "sessions.composite.logout_all")]
+    public async Task<ActionResult<ApiResponse<LogoutAllSessionsResponse>>> CompositeLogoutAllAsync(Guid userId, LogoutSessionRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _compositeLogoutAll.ExecuteAsync(new CompositeLogoutAllCommand(userId, request.ReasonCode), cancellationToken);
         return FromApplicationResult(result, x => new LogoutAllSessionsResponse(x.RevokedCount, x.RevokedAtUtc));
     }
 

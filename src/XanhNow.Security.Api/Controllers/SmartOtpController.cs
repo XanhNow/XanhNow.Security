@@ -4,6 +4,7 @@ using XanhNow.Security.Api.OpenApi;
 using XanhNow.Security.Application.Common.Requests;
 using XanhNow.Security.Application.Core;
 using XanhNow.Security.Contracts.Common.Responses;
+using XanhNow.Security.Contracts.V1.Auth;
 using XanhNow.Security.Contracts.V1.SmartOtp;
 
 namespace XanhNow.Security.Api.Controllers;
@@ -16,17 +17,20 @@ public sealed class SmartOtpController : ApiControllerBase
     private readonly ApplicationExecutor<ConfirmSmartOtpEnrollmentCommand, SmartOtpDeviceStateResult> _confirmEnrollment;
     private readonly ApplicationExecutor<StartStepUpCommand, StepUpChallengeResult> _startStepUp;
     private readonly ApplicationExecutor<VerifyStepUpCommand, StepUpGrantResult> _verifyStepUp;
+    private readonly ApplicationExecutor<IssueTransactionStepUpGrantCommand, ProtectedGrantResult> _issueTransactionGrant;
 
     public SmartOtpController(
         ApplicationExecutor<BeginSmartOtpEnrollmentCommand, BeginSmartOtpEnrollmentResult> beginEnrollment,
         ApplicationExecutor<ConfirmSmartOtpEnrollmentCommand, SmartOtpDeviceStateResult> confirmEnrollment,
         ApplicationExecutor<StartStepUpCommand, StepUpChallengeResult> startStepUp,
-        ApplicationExecutor<VerifyStepUpCommand, StepUpGrantResult> verifyStepUp)
+        ApplicationExecutor<VerifyStepUpCommand, StepUpGrantResult> verifyStepUp,
+        ApplicationExecutor<IssueTransactionStepUpGrantCommand, ProtectedGrantResult> issueTransactionGrant)
     {
         _beginEnrollment = beginEnrollment;
         _confirmEnrollment = confirmEnrollment;
         _startStepUp = startStepUp;
         _verifyStepUp = verifyStepUp;
+        _issueTransactionGrant = issueTransactionGrant;
     }
 
     [HttpPost("devices/enroll/begin")]
@@ -59,5 +63,13 @@ public sealed class SmartOtpController : ApiControllerBase
     {
         var result = await _verifyStepUp.ExecuteAsync(new VerifyStepUpCommand(request.ChallengeId, request.Otp), cancellationToken);
         return FromApplicationResult(result, x => new StepUpGrantResponse(x.ChallengeId, x.StepUpGrant, x.Purpose, x.ExpiresAtUtc));
+    }
+
+    [HttpPost("step-up/transaction-grant")]
+    [EndpointMaturity("Current", "smart_otp.step_up.transaction_grant")]
+    public async Task<ActionResult<ApiResponse<ProtectedGrantResponse>>> IssueTransactionGrantAsync(IssueTransactionStepUpGrantRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _issueTransactionGrant.ExecuteAsync(new IssueTransactionStepUpGrantCommand(CurrentUserIdOrEmpty(), request.Audience, request.Purpose, request.TransactionId, request.TransactionDigest, request.CanonicalizationVersion, request.ChallengeId, request.Otp), cancellationToken);
+        return FromApplicationResult(result, x => new ProtectedGrantResponse(x.GrantId, x.Grant, x.GrantType, x.Audience, x.Purpose, x.ExpiresAtUtc));
     }
 }

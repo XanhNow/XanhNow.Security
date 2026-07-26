@@ -16,13 +16,16 @@ public sealed class AccountController : ApiControllerBase
 {
     private readonly ApplicationExecutor<GetSecurityProfileQuery, SecurityProfileResult> _profile;
     private readonly ApplicationExecutor<ChangeAccountStateCommand, AccountStateResult> _stateChange;
+    private readonly ApplicationExecutor<ProtectAccountFromTakeoverCommand, AccountStateResult> _protectTakeover;
 
     public AccountController(
         ApplicationExecutor<GetSecurityProfileQuery, SecurityProfileResult> profile,
-        ApplicationExecutor<ChangeAccountStateCommand, AccountStateResult> stateChange)
+        ApplicationExecutor<ChangeAccountStateCommand, AccountStateResult> stateChange,
+        ApplicationExecutor<ProtectAccountFromTakeoverCommand, AccountStateResult> protectTakeover)
     {
         _profile = profile;
         _stateChange = stateChange;
+        _protectTakeover = protectTakeover;
     }
 
     [HttpGet("me/security-profile")]
@@ -50,6 +53,15 @@ public sealed class AccountController : ApiControllerBase
     [EndpointMaturity("Current", "accounts.disable")]
     public Task<ActionResult<ApiResponse<AccountStateChangeResponse>>> DisableAsync(Guid userId, AccountStateChangeRequest request, CancellationToken cancellationToken)
         => ChangeStateAsync(userId, AccountStateTargetState.Disabled, request, cancellationToken);
+
+    [Authorize(Policy = SecurityPolicyNames.Internal)]
+    [HttpPost("{userId:guid}/protect-takeover")]
+    [EndpointMaturity("Current", "accounts.protect_takeover")]
+    public async Task<ActionResult<ApiResponse<AccountStateChangeResponse>>> ProtectTakeoverAsync(Guid userId, AccountStateChangeRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _protectTakeover.ExecuteAsync(new ProtectAccountFromTakeoverCommand(userId, request.ReasonCode), cancellationToken);
+        return FromApplicationResult(result, x => new AccountStateChangeResponse(x.UserId, MapStatus(x.Status), x.ChangedAtUtc));
+    }
 
     private async Task<ActionResult<ApiResponse<AccountStateChangeResponse>>> ChangeStateAsync(Guid userId, AccountStateTargetState targetState, AccountStateChangeRequest request, CancellationToken cancellationToken)
     {
