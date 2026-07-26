@@ -50,16 +50,18 @@ public sealed class ApiFoundationTests : IClassFixture<WebApplicationFactory<Pro
     }
 
     [Fact]
-    public async Task Public_openapi_contains_health_but_not_business_shell_routes()
+    public async Task Public_openapi_contains_health_and_core_vertical_slice_routes()
     {
         using var client = _factory.CreateClient();
 
         var json = await client.GetStringAsync("/openapi/public-v1.json");
 
         Assert.Contains(ApiRoutes.Health.Live, json, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(ApiRoutes.Auth.Register, json, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(ApiRoutes.Passkeys.RegistrationBegin, json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(ApiRoutes.Auth.Register, json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(ApiRoutes.Auth.PasswordLogin, json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(ApiRoutes.Sessions.Refresh, json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(ApiRoutes.Passkeys.RegistrationBegin, json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(ApiRoutes.SmartOtp.EnrollBegin, json, StringComparison.OrdinalIgnoreCase);
     }
 }
-
 
