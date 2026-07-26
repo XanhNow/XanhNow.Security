@@ -107,6 +107,54 @@ public sealed class CoreSliceHandlerTests
         Assert.StartsWith("step-up:", grant.Value!.StepUpGrant, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Account_security_slices_delegate_to_child_app_ports()
+    {
+        var userId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
+        var authLogin = new FakeAuthLoginClient { AccountStatusResult = new AuthLoginAccountStatusResult(userId, "+849******00", "Active", Now) };
+        var jwt = new FakeJwtTokenClient
+        {
+            Sessions =
+            [
+                new JwtSessionDescriptor("session-1", userId, "Active", "Phone", "Android", Now.AddDays(-1), Now, Now.AddDays(30))
+            ],
+            RevokeAllResult = new JwtRevokeAllResult(2, Now)
+        };
+        var passkey = new FakePasskeyClient
+        {
+            ListResult = [new PasskeyDescriptor("credential-1", "Phone passkey", false)]
+        };
+        var audit = new FakeAuditIntentWriter();
+
+        var password = await new ChangePasswordCommandHandler(authLogin, audit, new FixedClock())
+            .HandleAsync(new ChangePasswordCommand(userId, "old-password", "new-password", "user_requested"), CancellationToken.None);
+        var phone = await new StartPhoneChangeCommandHandler(authLogin, audit, new FixedClock())
+            .HandleAsync(new StartPhoneChangeCommand(userId, "0911111111", "step-up-grant", "phone_change"), CancellationToken.None);
+        var profile = await new GetSecurityProfileQueryHandler(authLogin, passkey)
+            .HandleAsync(new GetSecurityProfileQuery(userId), CancellationToken.None);
+        var sessions = await new ListSessionsQueryHandler(jwt)
+            .HandleAsync(new ListSessionsQuery(userId), CancellationToken.None);
+        var logoutAll = await new LogoutAllSessionsCommandHandler(jwt, audit, new FixedClock())
+            .HandleAsync(new LogoutAllSessionsCommand(userId, "lost_device", true), CancellationToken.None);
+        var rename = await new RenamePasskeyCommandHandler(passkey, audit, new FixedClock())
+            .HandleAsync(new RenamePasskeyCommand(userId, "credential-1", "New name"), CancellationToken.None);
+        var disable = await new SetPasskeyEnabledCommandHandler(passkey, audit, new FixedClock())
+            .HandleAsync(new SetPasskeyEnabledCommand(userId, "credential-1", false, "user_requested"), CancellationToken.None);
+
+        Assert.True(password.IsSuccess);
+        Assert.Equal("password.change", password.Value!.OperationType);
+        Assert.True(phone.IsSuccess);
+        Assert.True(profile.Value!.HasPasskey);
+        Assert.Single(sessions.Value!);
+        Assert.Equal(2, logoutAll.Value!.RevokedCount);
+        Assert.True(rename.IsSuccess);
+        Assert.False(disable.Value!.IsEnabled);
+        Assert.Equal("0911111111", authLogin.LastPhoneChangeStartRequest?.NewPhoneNumber);
+        Assert.Equal("credential-1", passkey.LastRenameRequest?.CredentialId);
+        Assert.False(passkey.LastStateChangeRequest?.Enabled);
+        Assert.Contains(audit.Intents, x => x.Action == "session.logout_all" && x.Outcome == "succeeded");
+    }
+
     private sealed class FixedClock : IClock
     {
         public DateTimeOffset UtcNow => Now;
@@ -154,7 +202,9 @@ public sealed class CoreSliceHandlerTests
     {
         public AuthLoginRegisterResult RegisterResult { get; init; } = new(Guid.NewGuid());
         public AuthLoginPasswordResult PasswordResult { get; init; } = new(Guid.NewGuid(), "pwd");
+        public AuthLoginAccountStatusResult AccountStatusResult { get; init; } = new(Guid.NewGuid(), "+849******00", "Active", Now);
         public AuthLoginRegisterRequest? LastRegisterRequest { get; private set; }
+        public AuthLoginPhoneChangeStartRequest? LastPhoneChangeStartRequest { get; private set; }
 
         public ValueTask<ChildCallResult<AuthLoginRegisterResult>> RegisterAsync(AuthLoginRegisterRequest request, CancellationToken cancellationToken)
         {
@@ -164,11 +214,43 @@ public sealed class CoreSliceHandlerTests
 
         public ValueTask<ChildCallResult<AuthLoginPasswordResult>> LoginWithPasswordAsync(AuthLoginPasswordRequest request, CancellationToken cancellationToken)
             => ValueTask.FromResult(ChildCallResult<AuthLoginPasswordResult>.Success(PasswordResult));
+
+        public ValueTask<ChildCallResult<AuthLoginOperationResult>> ChangePasswordAsync(AuthLoginChangePasswordRequest request, CancellationToken cancellationToken)
+            => ValueTask.FromResult(ChildCallResult<AuthLoginOperationResult>.Success(new AuthLoginOperationResult(Guid.NewGuid(), "password.change", "Accepted", "auth-login")));
+
+        public ValueTask<ChildCallResult<AuthLoginOperationResult>> StartPasswordResetAsync(AuthLoginPasswordResetStartRequest request, CancellationToken cancellationToken)
+            => ValueTask.FromResult(ChildCallResult<AuthLoginOperationResult>.Success(new AuthLoginOperationResult(Guid.NewGuid(), "password.reset", "Accepted", "auth-login")));
+
+        public ValueTask<ChildCallResult<AuthLoginOperationResult>> CompletePasswordResetAsync(AuthLoginPasswordResetCompleteRequest request, CancellationToken cancellationToken)
+            => ValueTask.FromResult(ChildCallResult<AuthLoginOperationResult>.Success(new AuthLoginOperationResult(Guid.NewGuid(), "password.reset.complete", "Accepted", "auth-login")));
+
+        public ValueTask<ChildCallResult<AuthLoginAccountStateChangeResult>> ForcePasswordChangeAsync(AuthLoginForcePasswordChangeRequest request, CancellationToken cancellationToken)
+            => ValueTask.FromResult(ChildCallResult<AuthLoginAccountStateChangeResult>.Success(new AuthLoginAccountStateChangeResult(request.UserId, "Active", Now)));
+
+        public ValueTask<ChildCallResult<AuthLoginOperationResult>> StartPhoneChangeAsync(AuthLoginPhoneChangeStartRequest request, CancellationToken cancellationToken)
+        {
+            LastPhoneChangeStartRequest = request;
+            return ValueTask.FromResult(ChildCallResult<AuthLoginOperationResult>.Success(new AuthLoginOperationResult(Guid.NewGuid(), "phone.change", "Accepted", "auth-login")));
+        }
+
+        public ValueTask<ChildCallResult<AuthLoginOperationResult>> ConfirmPhoneChangeAsync(AuthLoginPhoneChangeConfirmRequest request, CancellationToken cancellationToken)
+            => ValueTask.FromResult(ChildCallResult<AuthLoginOperationResult>.Success(new AuthLoginOperationResult(request.OperationId, "phone.change.confirm", "Accepted", "auth-login")));
+
+        public ValueTask<ChildCallResult<AuthLoginOperationResult>> CancelPhoneChangeAsync(AuthLoginPhoneChangeCancelRequest request, CancellationToken cancellationToken)
+            => ValueTask.FromResult(ChildCallResult<AuthLoginOperationResult>.Success(new AuthLoginOperationResult(request.OperationId, "phone.change.cancel", "Accepted", "auth-login")));
+
+        public ValueTask<ChildCallResult<AuthLoginAccountStatusResult>> GetAccountStatusAsync(Guid userId, CancellationToken cancellationToken)
+            => ValueTask.FromResult(ChildCallResult<AuthLoginAccountStatusResult>.Success(AccountStatusResult with { UserId = userId }));
+
+        public ValueTask<ChildCallResult<AuthLoginAccountStateChangeResult>> ChangeAccountStateAsync(AuthLoginAccountStateChangeRequest request, CancellationToken cancellationToken)
+            => ValueTask.FromResult(ChildCallResult<AuthLoginAccountStateChangeResult>.Success(new AuthLoginAccountStateChangeResult(request.UserId, request.TargetState, Now)));
     }
 
     private sealed class FakeJwtTokenClient : IJwtTokenClient
     {
         public JwtIssueResult IssueResult { get; init; } = new("access", "refresh", Now.AddMinutes(15));
+        public IReadOnlyCollection<JwtSessionDescriptor> Sessions { get; init; } = [];
+        public JwtRevokeAllResult RevokeAllResult { get; init; } = new(0, Now);
         public JwtIssueRequest? LastIssueRequest { get; private set; }
 
         public ValueTask<ChildCallResult<JwtIssueResult>> IssueAsync(JwtIssueRequest request, CancellationToken cancellationToken)
@@ -182,6 +264,12 @@ public sealed class CoreSliceHandlerTests
 
         public ValueTask<ChildCallResult<bool>> RevokeSessionAsync(JwtRevokeRequest request, CancellationToken cancellationToken)
             => ValueTask.FromResult(ChildCallResult<bool>.Success(true));
+
+        public ValueTask<ChildCallResult<IReadOnlyCollection<JwtSessionDescriptor>>> ListSessionsAsync(Guid userId, CancellationToken cancellationToken)
+            => ValueTask.FromResult(ChildCallResult<IReadOnlyCollection<JwtSessionDescriptor>>.Success(Sessions));
+
+        public ValueTask<ChildCallResult<JwtRevokeAllResult>> RevokeAllSessionsAsync(JwtRevokeAllRequest request, CancellationToken cancellationToken)
+            => ValueTask.FromResult(ChildCallResult<JwtRevokeAllResult>.Success(RevokeAllResult));
     }
 
     private sealed class FakePasskeyClient : IPasskeyClient
@@ -191,6 +279,8 @@ public sealed class CoreSliceHandlerTests
         public IReadOnlyCollection<PasskeyDescriptor> ListResult { get; init; } = [];
         public PasskeyBeginRequest? LastBeginRequest { get; private set; }
         public string? LastRevokeCredentialId { get; private set; }
+        public PasskeyRenameRequest? LastRenameRequest { get; private set; }
+        public PasskeyStateChangeRequest? LastStateChangeRequest { get; private set; }
 
         public ValueTask<ChildCallResult<PasskeyBeginResult>> BeginAsync(PasskeyBeginRequest request, CancellationToken cancellationToken)
         {
@@ -207,6 +297,18 @@ public sealed class CoreSliceHandlerTests
         public ValueTask<ChildCallResult<bool>> RevokeAsync(Guid userId, string credentialId, CancellationToken cancellationToken)
         {
             LastRevokeCredentialId = credentialId;
+            return ValueTask.FromResult(ChildCallResult<bool>.Success(true));
+        }
+
+        public ValueTask<ChildCallResult<bool>> RenameAsync(PasskeyRenameRequest request, CancellationToken cancellationToken)
+        {
+            LastRenameRequest = request;
+            return ValueTask.FromResult(ChildCallResult<bool>.Success(true));
+        }
+
+        public ValueTask<ChildCallResult<bool>> SetEnabledAsync(PasskeyStateChangeRequest request, CancellationToken cancellationToken)
+        {
+            LastStateChangeRequest = request;
             return ValueTask.FromResult(ChildCallResult<bool>.Success(true));
         }
     }

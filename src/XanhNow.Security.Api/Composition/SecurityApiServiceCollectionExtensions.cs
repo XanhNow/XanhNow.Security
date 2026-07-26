@@ -153,6 +153,19 @@ public static class SecurityApiServiceCollectionExtensions
         services.AddScoped<IRequestHandler<ConfirmSmartOtpEnrollmentCommand, SmartOtpDeviceStateResult>, ConfirmSmartOtpEnrollmentCommandHandler>();
         services.AddScoped<IRequestHandler<StartStepUpCommand, StepUpChallengeResult>, StartStepUpCommandHandler>();
         services.AddScoped<IRequestHandler<VerifyStepUpCommand, StepUpGrantResult>, VerifyStepUpCommandHandler>();
+        services.AddScoped<IRequestHandler<ChangePasswordCommand, AccountSecurityOperationResult>, ChangePasswordCommandHandler>();
+        services.AddScoped<IRequestHandler<StartPasswordResetCommand, AccountSecurityOperationResult>, StartPasswordResetCommandHandler>();
+        services.AddScoped<IRequestHandler<CompletePasswordResetCommand, AccountSecurityOperationResult>, CompletePasswordResetCommandHandler>();
+        services.AddScoped<IRequestHandler<ForcePasswordChangeCommand, AccountStateResult>, ForcePasswordChangeCommandHandler>();
+        services.AddScoped<IRequestHandler<StartPhoneChangeCommand, AccountSecurityOperationResult>, StartPhoneChangeCommandHandler>();
+        services.AddScoped<IRequestHandler<ConfirmPhoneChangeCommand, AccountSecurityOperationResult>, ConfirmPhoneChangeCommandHandler>();
+        services.AddScoped<IRequestHandler<CancelPhoneChangeCommand, AccountSecurityOperationResult>, CancelPhoneChangeCommandHandler>();
+        services.AddScoped<IRequestHandler<GetSecurityProfileQuery, SecurityProfileResult>, GetSecurityProfileQueryHandler>();
+        services.AddScoped<IRequestHandler<ChangeAccountStateCommand, AccountStateResult>, ChangeAccountStateCommandHandler>();
+        services.AddScoped<IRequestHandler<ListSessionsQuery, IReadOnlyCollection<SessionSummaryResult>>, ListSessionsQueryHandler>();
+        services.AddScoped<IRequestHandler<LogoutAllSessionsCommand, LogoutAllSessionsResult>, LogoutAllSessionsCommandHandler>();
+        services.AddScoped<IRequestHandler<RenamePasskeyCommand, PasskeyStateResult>, RenamePasskeyCommandHandler>();
+        services.AddScoped<IRequestHandler<SetPasskeyEnabledCommand, PasskeyStateResult>, SetPasskeyEnabledCommandHandler>();
         return services;
     }
 }

@@ -8,3 +8,4 @@ public sealed record SessionSummaryResponse(string SessionId, Guid UserId, Sessi
 public sealed record LogoutSessionRequest(string ReasonCode);
 public sealed record LogoutAllSessionsRequest(string ReasonCode, bool IncludeCurrentSession);
 public sealed record LogoutResponse(string SessionId, SessionStatusContract Status, DateTimeOffset RevokedAtUtc);
+public sealed record LogoutAllSessionsResponse(int RevokedCount, DateTimeOffset RevokedAtUtc);

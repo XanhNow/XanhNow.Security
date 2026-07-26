@@ -15,13 +15,19 @@ public sealed class SessionsController : ApiControllerBase
 {
     private readonly ApplicationExecutor<RefreshSessionCommand, TokenPairResult> _refresh;
     private readonly ApplicationExecutor<LogoutSessionCommand, LogoutSessionResult> _logout;
+    private readonly ApplicationExecutor<ListSessionsQuery, IReadOnlyCollection<SessionSummaryResult>> _list;
+    private readonly ApplicationExecutor<LogoutAllSessionsCommand, LogoutAllSessionsResult> _logoutAll;
 
     public SessionsController(
         ApplicationExecutor<RefreshSessionCommand, TokenPairResult> refresh,
-        ApplicationExecutor<LogoutSessionCommand, LogoutSessionResult> logout)
+        ApplicationExecutor<LogoutSessionCommand, LogoutSessionResult> logout,
+        ApplicationExecutor<ListSessionsQuery, IReadOnlyCollection<SessionSummaryResult>> list,
+        ApplicationExecutor<LogoutAllSessionsCommand, LogoutAllSessionsResult> logoutAll)
     {
         _refresh = refresh;
         _logout = logout;
+        _list = list;
+        _logoutAll = logoutAll;
     }
 
     [AllowAnonymous]
@@ -40,4 +46,26 @@ public sealed class SessionsController : ApiControllerBase
         var result = await _logout.ExecuteAsync(new LogoutSessionCommand(CurrentUserIdOrEmpty(), sessionId, request.ReasonCode), cancellationToken);
         return FromApplicationResult(result, x => new LogoutResponse(x.SessionId, SessionStatusContract.Revoked, x.RevokedAtUtc));
     }
+
+    [HttpGet]
+    [EndpointMaturity("Current", "sessions.list")]
+    public async Task<ActionResult<ApiResponse<SessionSummaryResponse[]>>> ListAsync(CancellationToken cancellationToken)
+    {
+        var result = await _list.ExecuteAsync(new ListSessionsQuery(CurrentUserIdOrEmpty()), cancellationToken);
+        return FromApplicationResult(result, sessions => sessions.Select(MapSession).ToArray());
+    }
+
+    [HttpPost("logout-all")]
+    [EndpointMaturity("Current", "sessions.logout-all")]
+    public async Task<ActionResult<ApiResponse<LogoutAllSessionsResponse>>> LogoutAllAsync(LogoutAllSessionsRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _logoutAll.ExecuteAsync(new LogoutAllSessionsCommand(CurrentUserIdOrEmpty(), request.ReasonCode, request.IncludeCurrentSession), cancellationToken);
+        return FromApplicationResult(result, x => new LogoutAllSessionsResponse(x.RevokedCount, x.RevokedAtUtc));
+    }
+
+    private static SessionSummaryResponse MapSession(SessionSummaryResult session)
+        => new(session.SessionId, session.UserId, MapSessionStatus(session.Status), session.DeviceName, session.Platform, session.CreatedAtUtc, session.LastSeenAtUtc, session.ExpiresAtUtc);
+
+    private static SessionStatusContract MapSessionStatus(string status)
+        => Enum.TryParse<SessionStatusContract>(status, ignoreCase: true, out var parsed) ? parsed : SessionStatusContract.Active;
 }

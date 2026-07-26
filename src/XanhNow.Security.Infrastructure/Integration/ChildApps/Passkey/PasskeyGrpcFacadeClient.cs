@@ -23,4 +23,10 @@ internal sealed class PasskeyGrpcFacadeClient : ChildAppJsonClient, IPasskeyClie
 
     public ValueTask<ChildCallResult<bool>> RevokeAsync(Guid userId, string credentialId, CancellationToken cancellationToken)
         => PostAsync<object, bool>($"/internal/v1/passkeys/users/{userId}/credentials/{Uri.EscapeDataString(credentialId)}/revoke", new { }, cancellationToken);
+
+    public ValueTask<ChildCallResult<bool>> RenameAsync(PasskeyRenameRequest request, CancellationToken cancellationToken)
+        => PostAsync<PasskeyRenameRequest, bool>($"/internal/v1/passkeys/users/{request.UserId}/credentials/{Uri.EscapeDataString(request.CredentialId)}/rename", request, cancellationToken);
+
+    public ValueTask<ChildCallResult<bool>> SetEnabledAsync(PasskeyStateChangeRequest request, CancellationToken cancellationToken)
+        => PostAsync<PasskeyStateChangeRequest, bool>($"/internal/v1/passkeys/users/{request.UserId}/credentials/{Uri.EscapeDataString(request.CredentialId)}/state", request, cancellationToken);
 }
