@@ -7,6 +7,8 @@ public sealed record PasskeyBeginResult(string CeremonyId, string PublicOptionsJ
 public sealed record PasskeyFinishRequest(string CeremonyId, string ClientResponseJson);
 public sealed record PasskeyFinishResult(Guid UserId, string CredentialId, string AssuranceLevel);
 public sealed record PasskeyDescriptor(string CredentialId, string DisplayName, bool Revoked);
+public sealed record PasskeyRenameRequest(Guid UserId, string CredentialId, string DisplayName);
+public sealed record PasskeyStateChangeRequest(Guid UserId, string CredentialId, bool Enabled, string ReasonCode);
 
 public interface IPasskeyClient
 {
@@ -14,4 +16,6 @@ public interface IPasskeyClient
     ValueTask<ChildCallResult<PasskeyFinishResult>> FinishAsync(PasskeyFinishRequest request, CancellationToken cancellationToken);
     ValueTask<ChildCallResult<IReadOnlyCollection<PasskeyDescriptor>>> ListAsync(Guid userId, CancellationToken cancellationToken);
     ValueTask<ChildCallResult<bool>> RevokeAsync(Guid userId, string credentialId, CancellationToken cancellationToken);
+    ValueTask<ChildCallResult<bool>> RenameAsync(PasskeyRenameRequest request, CancellationToken cancellationToken);
+    ValueTask<ChildCallResult<bool>> SetEnabledAsync(PasskeyStateChangeRequest request, CancellationToken cancellationToken);
 }

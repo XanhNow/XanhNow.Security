@@ -20,4 +20,10 @@ internal sealed class JwtTokenGrpcFacadeClient : ChildAppJsonClient, IJwtTokenCl
 
     public ValueTask<ChildCallResult<bool>> RevokeSessionAsync(JwtRevokeRequest request, CancellationToken cancellationToken)
         => PostAsync<JwtRevokeRequest, bool>("/internal/v1/jwt/sessions/revoke", request, cancellationToken);
+
+    public ValueTask<ChildCallResult<IReadOnlyCollection<JwtSessionDescriptor>>> ListSessionsAsync(Guid userId, CancellationToken cancellationToken)
+        => GetAsync<IReadOnlyCollection<JwtSessionDescriptor>>($"/internal/v1/jwt/users/{userId}/sessions", cancellationToken);
+
+    public ValueTask<ChildCallResult<JwtRevokeAllResult>> RevokeAllSessionsAsync(JwtRevokeAllRequest request, CancellationToken cancellationToken)
+        => PostAsync<JwtRevokeAllRequest, JwtRevokeAllResult>("/internal/v1/jwt/sessions/revoke-all", request, cancellationToken);
 }
