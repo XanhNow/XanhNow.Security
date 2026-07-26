@@ -16,5 +16,6 @@
     <Project Path="tests/XanhNow.Security.Domain.Tests/XanhNow.Security.Domain.Tests.csproj" />
     <Project Path="tests/XanhNow.Security.EndToEndTests/XanhNow.Security.EndToEndTests.csproj" />
     <Project Path="tests/XanhNow.Security.IntegrationTests/XanhNow.Security.IntegrationTests.csproj" />
+    <Project Path="tests/XanhNow.Security.Worker.Tests/XanhNow.Security.Worker.Tests.csproj" />
   </Folder>
 </Solution>
