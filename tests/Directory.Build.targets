@@ -1,0 +1,5 @@
+<Project>
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)TestKit\**\*.cs" LinkBase="TestKit" />
+  </ItemGroup>
+</Project>
