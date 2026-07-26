@@ -13,7 +13,7 @@ namespace XanhNow.Security.Api.Tests;
 public sealed class ApiBoundaryTests
 {
     [Fact]
-    public void Rb08_has_exact_business_controller_shells_without_actions()
+    public void Rb12_publishes_only_core_vertical_slice_actions()
     {
         var shellTypes = typeof(Program).Assembly.GetTypes()
             .Where(type => type.IsClass && !type.IsAbstract && type.IsAssignableTo(typeof(ApiControllerBase)))
@@ -35,12 +35,20 @@ public sealed class ApiBoundaryTests
             "SmartOtpController"
         }, shellTypes.Select(type => type.Name).ToArray());
 
+        var expectedActionCounts = new Dictionary<string, int>
+        {
+            ["AuthController"] = 4,
+            ["PasskeysController"] = 4,
+            ["SessionsController"] = 2,
+            ["SmartOtpController"] = 4
+        };
+
         foreach (var shell in shellTypes)
         {
             var actions = shell.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
                 .Where(method => method.GetCustomAttributes<HttpMethodAttribute>().Any())
                 .ToArray();
-            Assert.Empty(actions);
+            Assert.Equal(expectedActionCounts.GetValueOrDefault(shell.Name), actions.Length);
         }
     }
 
@@ -66,5 +74,4 @@ public sealed class ApiBoundaryTests
         }
     }
 }
-
 

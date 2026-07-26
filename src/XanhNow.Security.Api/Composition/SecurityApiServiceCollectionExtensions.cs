@@ -9,6 +9,8 @@ using XanhNow.Security.Api.Health;
 using XanhNow.Security.Api.OpenApi;
 using XanhNow.Security.Api.Options;
 using XanhNow.Security.Api.Security;
+using XanhNow.Security.Application.Common.Requests;
+using XanhNow.Security.Application.Core;
 using XanhNow.Security.Application.Abstractions.Context;
 using XanhNow.Security.Infrastructure.Integration;
 using XanhNow.Security.Infrastructure.Persistence;
@@ -42,6 +44,7 @@ public static class SecurityApiServiceCollectionExtensions
         services.AddSingleton<ICorrelationContextAccessor>(sp => sp.GetRequiredService<HttpCurrentCaller>());
         services.AddSingleton<SecurityDependencyHealthService>();
         services.AddSingleton<OpenApiInventoryService>();
+        services.AddCoreVerticalSlices();
 
         services.AddSecurityPersistence(options =>
         {
@@ -130,6 +133,26 @@ public static class SecurityApiServiceCollectionExtensions
                 };
             });
 
+        return services;
+    }
+
+    private static IServiceCollection AddCoreVerticalSlices(this IServiceCollection services)
+    {
+        services.AddScoped(typeof(ApplicationExecutor<,>));
+        services.AddScoped<IRequestHandler<RegisterCommand, RegisterResult>, RegisterCommandHandler>();
+        services.AddScoped<IRequestHandler<PasswordLoginCommand, PasswordLoginResult>, PasswordLoginCommandHandler>();
+        services.AddScoped<IRequestHandler<RefreshSessionCommand, TokenPairResult>, RefreshSessionCommandHandler>();
+        services.AddScoped<IRequestHandler<LogoutSessionCommand, LogoutSessionResult>, LogoutSessionCommandHandler>();
+        services.AddScoped<IRequestHandler<BeginPasskeyRegistrationCommand, BeginPasskeyRegistrationResult>, BeginPasskeyRegistrationCommandHandler>();
+        services.AddScoped<IRequestHandler<FinishPasskeyRegistrationCommand, PasskeyStateResult>, FinishPasskeyRegistrationCommandHandler>();
+        services.AddScoped<IRequestHandler<ListPasskeysQuery, IReadOnlyCollection<PasskeySummaryResult>>, ListPasskeysQueryHandler>();
+        services.AddScoped<IRequestHandler<RevokePasskeyCommand, PasskeyStateResult>, RevokePasskeyCommandHandler>();
+        services.AddScoped<IRequestHandler<BeginPasskeyLoginCommand, BeginPasskeyLoginResult>, BeginPasskeyLoginCommandHandler>();
+        services.AddScoped<IRequestHandler<FinishPasskeyLoginCommand, PasswordLoginResult>, FinishPasskeyLoginCommandHandler>();
+        services.AddScoped<IRequestHandler<BeginSmartOtpEnrollmentCommand, BeginSmartOtpEnrollmentResult>, BeginSmartOtpEnrollmentCommandHandler>();
+        services.AddScoped<IRequestHandler<ConfirmSmartOtpEnrollmentCommand, SmartOtpDeviceStateResult>, ConfirmSmartOtpEnrollmentCommandHandler>();
+        services.AddScoped<IRequestHandler<StartStepUpCommand, StepUpChallengeResult>, StartStepUpCommandHandler>();
+        services.AddScoped<IRequestHandler<VerifyStepUpCommand, StepUpGrantResult>, VerifyStepUpCommandHandler>();
         return services;
     }
 }
