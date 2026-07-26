@@ -23,9 +23,24 @@ public sealed class SecurityApiOptionsValidator : IValidateOptions<SecurityApiOp
             failures.Add("SecurityApi:MaxRequestBodyBytes must be greater than zero.");
         }
 
+        if (options.MaxRequestHeadersTotalSizeBytes < 8_192)
+        {
+            failures.Add("SecurityApi:MaxRequestHeadersTotalSizeBytes must be at least 8192 bytes.");
+        }
+
+        if (options.RequestHeadersTimeoutSeconds <= 0)
+        {
+            failures.Add("SecurityApi:RequestHeadersTimeoutSeconds must be greater than zero.");
+        }
+
         if (options.RequestTimeoutSeconds <= 0)
         {
             failures.Add("SecurityApi:RequestTimeoutSeconds must be greater than zero.");
+        }
+
+        if (options.MaxCorrelationIdLength is < 32 or > 256)
+        {
+            failures.Add("SecurityApi:MaxCorrelationIdLength must be between 32 and 256.");
         }
 
         if (options.AnonymousRequestsPerMinute <= 0 || options.UserRequestsPerMinute <= 0 || options.ServiceRequestsPerMinute <= 0)

@@ -13,6 +13,8 @@ builder.WebHost.ConfigureKestrel((context, options) =>
 {
     var apiOptions = context.Configuration.GetSection(SecurityApiOptions.SectionName).Get<SecurityApiOptions>() ?? new SecurityApiOptions();
     options.Limits.MaxRequestBodySize = apiOptions.MaxRequestBodyBytes;
+    options.Limits.MaxRequestHeadersTotalSize = apiOptions.MaxRequestHeadersTotalSizeBytes;
+    options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(apiOptions.RequestHeadersTimeoutSeconds);
 });
 
 var app = builder.Build();
@@ -21,11 +23,18 @@ var securityOptions = app.Services.GetRequiredService<IOptions<SecurityApiOption
 app.UseForwardedHeaders();
 app.UseMiddleware<ApiExceptionMiddleware>();
 app.UseMiddleware<CorrelationMiddleware>();
-app.UseMiddleware<SecurityHeadersMiddleware>();
+if (securityOptions.EnableSecurityHeaders)
+{
+    app.UseMiddleware<SecurityHeadersMiddleware>();
+}
+
+if (securityOptions.RequireHttps || securityOptions.EnableStrictTransportSecurity)
+{
+    app.UseHsts();
+}
 
 if (securityOptions.RequireHttps)
 {
-    app.UseHsts();
     app.UseHttpsRedirection();
 }
 
@@ -45,4 +54,3 @@ app.Run();
 public partial class Program
 {
 }
-
