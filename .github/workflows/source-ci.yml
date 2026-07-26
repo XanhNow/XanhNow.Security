@@ -1,0 +1,31 @@
+﻿name: XanhNow.Security Source CI
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  source-ci:
+    runs-on: self-hosted
+    timeout-minutes: 30
+    env:
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Restore
+        run: dotnet restore XanhNow.Security.slnx --disable-parallel
+
+      - name: Format check
+        run: dotnet format XanhNow.Security.slnx --verify-no-changes
+
+      - name: Build
+        run: dotnet build XanhNow.Security.slnx -c Release --no-restore
+
+      - name: Test
+        run: dotnet test XanhNow.Security.slnx -c Release --no-build

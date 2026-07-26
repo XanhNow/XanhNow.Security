@@ -1,0 +1,17 @@
+﻿[Unit]
+Description=XanhNow Security Worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=xanhnow
+Group=xanhnow
+WorkingDirectory=/srv/xanhnow/apps/xanhnow-security-worker/current
+ExecStart=/usr/bin/dotnet /srv/xanhnow/apps/xanhnow-security-worker/current/XanhNow.Security.Worker.dll
+Restart=always
+RestartSec=5
+Environment=DOTNET_ENVIRONMENT=Production
+
+[Install]
+WantedBy=multi-user.target
