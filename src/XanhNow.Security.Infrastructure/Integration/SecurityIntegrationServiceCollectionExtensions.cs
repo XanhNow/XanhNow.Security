@@ -6,8 +6,10 @@ using XanhNow.Security.Application.Abstractions.ChildApps.Jwt;
 using XanhNow.Security.Application.Abstractions.ChildApps.Passkey;
 using XanhNow.Security.Application.Abstractions.ChildApps.SmartOtp;
 using XanhNow.Security.Application.Abstractions.Idempotency;
+using XanhNow.Security.Application.Abstractions.Grant;
 using XanhNow.Security.Application.Abstractions.Ids;
 using XanhNow.Security.Application.Abstractions.Locking;
+using XanhNow.Security.Application.Abstractions.Policy;
 using XanhNow.Security.Application.Abstractions.RateLimiting;
 using XanhNow.Security.Application.Abstractions.Time;
 using XanhNow.Security.Infrastructure.Integration.ChildApps.AuthLogin;
@@ -17,6 +19,7 @@ using XanhNow.Security.Infrastructure.Integration.ChildApps.SmartOtp;
 using XanhNow.Security.Infrastructure.Integration.Common;
 using XanhNow.Security.Infrastructure.Integration.Kafka;
 using XanhNow.Security.Infrastructure.Integration.Options;
+using XanhNow.Security.Infrastructure.Integration.Policy;
 using XanhNow.Security.Infrastructure.Integration.Redis;
 using XanhNow.Security.Infrastructure.Integration.Vault;
 
@@ -48,6 +51,8 @@ public static class SecurityIntegrationServiceCollectionExtensions
         services.AddSingleton<IDistributedLockService, RedisDistributedLockService>();
         services.AddSingleton<IVaultSecretReader, VaultSecretReader>();
         services.AddSingleton<IGrantTokenService, VaultBackedGrantTokenService>();
+        services.AddSingleton<IGrantProtector, GrantProtector>();
+        services.AddSingleton<IPolicyEvaluator, FoundationPolicyEvaluator>();
         services.AddSingleton<IKafkaSecurityEventProducer, KafkaSecurityEventProducer>();
 
         services.AddSingleton<IAuthLoginClient>(sp => new AuthLoginRestClient(CreateHttpClient(sp.GetRequiredService<SecurityIntegrationOptions>().AuthLogin), sp.GetRequiredService<SecurityIntegrationOptions>()));
