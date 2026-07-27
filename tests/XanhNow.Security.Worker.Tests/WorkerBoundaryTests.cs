@@ -18,7 +18,7 @@ public sealed class WorkerBoundaryTests
         var projectFile = Path.Combine(root, "src", "XanhNow.Security.Worker", "XanhNow.Security.Worker.csproj");
         var refs = XDocument.Load(projectFile).Descendants()
             .Where(x => x.Name.LocalName == "ProjectReference")
-            .Select(x => Path.GetFileNameWithoutExtension((string?)x.Attribute("Include") ?? string.Empty))
+            .Select(x => ProjectNameFromReference((string?)x.Attribute("Include") ?? string.Empty))
             .ToArray();
 
         Assert.DoesNotContain("XanhNow.Security.Api", refs);
@@ -75,5 +75,10 @@ public sealed class WorkerBoundaryTests
 
         throw new InvalidOperationException("Cannot find repository root.");
     }
-}
 
+    private static string ProjectNameFromReference(string reference)
+    {
+        var normalized = reference.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
+        return Path.GetFileNameWithoutExtension(normalized);
+    }
+}

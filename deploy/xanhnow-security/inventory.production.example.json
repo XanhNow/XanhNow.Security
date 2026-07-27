@@ -1,0 +1,14 @@
+﻿{
+  "app": "XanhNow.Security",
+  "apiNodes": [
+    { "name": "api-1", "host": "192.168.2.25" },
+    { "name": "api-2", "host": "192.168.2.38" },
+    { "name": "api-3", "host": "192.168.2.65" }
+  ],
+  "runner": { "name": "API_Deploy", "host": "192.168.2.95", "user": "gha-runner" },
+  "paths": {
+    "apiRoot": "/srv/xanhnow/apps/xanhnow-security-api",
+    "workerRoot": "/srv/xanhnow/apps/xanhnow-security-worker",
+    "runtimeRoot": "/etc/xanhnow/xanhnow-security"
+  }
+}

@@ -1,0 +1,18 @@
+﻿[Unit]
+Description=XanhNow Security API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=xanhnow
+Group=xanhnow
+WorkingDirectory=/srv/xanhnow/apps/xanhnow-security-api/current
+ExecStart=/usr/bin/dotnet /srv/xanhnow/apps/xanhnow-security-api/current/XanhNow.Security.Api.dll
+Restart=always
+RestartSec=5
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=DOTNET_ENVIRONMENT=Production
+
+[Install]
+WantedBy=multi-user.target

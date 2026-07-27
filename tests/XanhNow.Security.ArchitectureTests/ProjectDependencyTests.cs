@@ -42,10 +42,15 @@ public sealed class ProjectDependencyTests
         var document = XDocument.Load(projectFile);
         return document.Descendants()
             .Where(x => x.Name.LocalName == "ProjectReference")
-            .Select(x => Path.GetFileNameWithoutExtension((string?)x.Attribute("Include") ?? string.Empty))
+            .Select(x => ProjectNameFromReference((string?)x.Attribute("Include") ?? string.Empty))
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .OrderBy(x => x)
             .ToArray();
     }
-}
 
+    private static string ProjectNameFromReference(string reference)
+    {
+        var normalized = reference.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
+        return Path.GetFileNameWithoutExtension(normalized);
+    }
+}
