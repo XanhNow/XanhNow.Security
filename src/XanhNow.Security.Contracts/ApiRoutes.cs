@@ -14,6 +14,7 @@ public static class ApiRoutes
     public static class Account
     {
         public const string SecurityProfile = "/api/v1/accounts/me/security-profile";
+        public const string DeleteMe = "/api/v1/accounts/me";
         public const string Lock = "/api/v1/accounts/{userId}/lock";
         public const string Unlock = "/api/v1/accounts/{userId}/unlock";
         public const string Disable = "/api/v1/accounts/{userId}/disable";

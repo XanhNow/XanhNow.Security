@@ -37,7 +37,7 @@ public sealed class ApiBoundaryTests
 
         var expectedActionCounts = new Dictionary<string, int>
         {
-            ["AccountController"] = 5,
+            ["AccountController"] = 6,
             ["AuthController"] = 7,
             ["PasskeysController"] = 7,
             ["PasswordController"] = 4,

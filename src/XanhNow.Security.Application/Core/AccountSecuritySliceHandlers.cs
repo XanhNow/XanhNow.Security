@@ -1,11 +1,18 @@
+using System.Text.Json;
 using XanhNow.Security.Application.Abstractions.Audit;
 using XanhNow.Security.Application.Abstractions.ChildApps;
 using XanhNow.Security.Application.Abstractions.ChildApps.AuthLogin;
 using XanhNow.Security.Application.Abstractions.ChildApps.Jwt;
 using XanhNow.Security.Application.Abstractions.ChildApps.Passkey;
+using XanhNow.Security.Application.Abstractions.ChildApps.SmartOtp;
+using XanhNow.Security.Application.Abstractions.Ids;
+using XanhNow.Security.Application.Abstractions.Outbox;
+using XanhNow.Security.Application.Abstractions.Persistence;
 using XanhNow.Security.Application.Abstractions.Time;
 using XanhNow.Security.Application.Common.Requests;
 using XanhNow.Security.Application.Common.Results;
+using XanhNow.Security.Domain.Users;
+using XanhNow.Security.Domain.ValueObjects;
 
 namespace XanhNow.Security.Application.Core;
 
@@ -215,6 +222,116 @@ public sealed class ChangeAccountStateCommandHandler : CoreSliceHandler, IReques
         await AuditAsync(request.UserId, $"account.{request.TargetState.ToString().ToLowerInvariant()}", "succeeded", request.ReasonCode, cancellationToken);
         return Result<AccountStateResult>.Success(AccountSecuritySliceMapper.ToAccountState(child.Value));
     }
+}
+public sealed class DeleteOwnAccountCommandHandler : CoreSliceHandler, IRequestHandler<DeleteOwnAccountCommand, DeleteOwnAccountResult>
+{
+    private const string ReasonCodeValue = "account_self_delete";
+    private readonly IAuthLoginClient _authLogin;
+    private readonly IJwtTokenClient _jwt;
+    private readonly IPasskeyClient _passkey;
+    private readonly ISmartOtpClient _smartOtp;
+    private readonly ISecurityUserRepository _users;
+    private readonly IOutboxIntentWriter _outbox;
+    private readonly IIdGenerator _ids;
+    private readonly ILocalUnitOfWork _unitOfWork;
+
+    public DeleteOwnAccountCommandHandler(
+        IAuthLoginClient authLogin,
+        IJwtTokenClient jwt,
+        IPasskeyClient passkey,
+        ISmartOtpClient smartOtp,
+        ISecurityUserRepository users,
+        IOutboxIntentWriter outbox,
+        IIdGenerator ids,
+        ILocalUnitOfWork unitOfWork,
+        IAuditIntentWriter audit,
+        IClock clock)
+        : base(audit, clock)
+    {
+        _authLogin = authLogin;
+        _jwt = jwt;
+        _passkey = passkey;
+        _smartOtp = smartOtp;
+        _users = users;
+        _outbox = outbox;
+        _ids = ids;
+        _unitOfWork = unitOfWork;
+    }
+
+    public async Task<Result<DeleteOwnAccountResult>> HandleAsync(DeleteOwnAccountCommand request, CancellationToken cancellationToken)
+    {
+        if (request.UserId == Guid.Empty)
+        {
+            return Result<DeleteOwnAccountResult>.Failure(Error.Authentication(SecurityErrorCodes.CallerRequired, "Authenticated user is required."));
+        }
+
+        if (string.IsNullOrWhiteSpace(request.IdempotencyKey))
+        {
+            return Result<DeleteOwnAccountResult>.Failure(Error.Validation(SecurityErrorCodes.ValidationFailed, "Idempotency-Key header is required."));
+        }
+
+        if (string.IsNullOrWhiteSpace(request.CorrelationId))
+        {
+            return Result<DeleteOwnAccountResult>.Failure(Error.Validation(SecurityErrorCodes.ValidationFailed, "X-Correlation-Id header is required."));
+        }
+
+        var now = Now;
+        var user = await _users.FindByIdAsync(request.UserId, cancellationToken);
+        if (user?.Status == UserSecurityStatus.Disabled)
+        {
+            await AuditAsync(request.UserId, "account.delete_self", "replayed", ReasonCodeValue, cancellationToken);
+            await _unitOfWork.CommitAsync(cancellationToken);
+            return Result<DeleteOwnAccountResult>.Success(new DeleteOwnAccountResult(request.UserId, now));
+        }
+
+        var authLogin = await _authLogin.ChangeAccountStateAsync(new AuthLoginAccountStateChangeRequest(request.UserId, AccountStateTargetState.Disabled.ToString(), ReasonCodeValue, "User requested account deletion."), cancellationToken);
+        if (authLogin.IsFailure || authLogin.Value is null)
+        {
+            await AuditAsync(request.UserId, "account.delete_self", "failed", authLogin.Error?.Code ?? "auth_login_failed", cancellationToken);
+            return ChildFailure<DeleteOwnAccountResult>(authLogin.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Auth Login account deletion failed.", true));
+        }
+
+        var jwt = await _jwt.RevokeAllSessionsAsync(new JwtRevokeAllRequest(request.UserId, ReasonCodeValue, true), cancellationToken);
+        if (jwt.IsFailure || jwt.Value is null)
+        {
+            await AuditAsync(request.UserId, "account.delete_self", "partial", jwt.Error?.Code ?? "jwt_revoke_all_failed", cancellationToken);
+            return ChildFailure<DeleteOwnAccountResult>(jwt.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "JWT session revoke failed.", true));
+        }
+
+        var passkey = await _passkey.RevokeAllAsync(new PasskeyRevokeAllRequest(request.UserId, ReasonCodeValue), cancellationToken);
+        if (passkey.IsFailure || passkey.Value is null)
+        {
+            await AuditAsync(request.UserId, "account.delete_self", "partial", passkey.Error?.Code ?? "passkey_revoke_all_failed", cancellationToken);
+            return ChildFailure<DeleteOwnAccountResult>(passkey.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Passkey revoke-all failed.", true));
+        }
+
+        var smartOtp = await _smartOtp.RevokeAllDevicesAsync(new SmartOtpRevokeAllDevicesRequest(request.UserId, ReasonCodeValue), cancellationToken);
+        if (smartOtp.IsFailure || smartOtp.Value is null)
+        {
+            await AuditAsync(request.UserId, "account.delete_self", "partial", smartOtp.Error?.Code ?? "smart_otp_revoke_all_failed", cancellationToken);
+            return ChildFailure<DeleteOwnAccountResult>(smartOtp.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Smart OTP revoke-all failed.", true));
+        }
+
+        if (user is null)
+        {
+            user = SecurityUser.Create(request.UserId, now);
+            await _users.AddAsync(user, cancellationToken);
+        }
+
+        user.Disable(ReasonCode.From(ReasonCodeValue), now);
+        await AuditAsync(request.UserId, "account.delete_self", "succeeded", ReasonCodeValue, cancellationToken);
+        await _outbox.AppendAsync(new OutboxIntent(
+            _ids.NewId(),
+            "ACCOUNT_DELETED",
+            nameof(SecurityUser),
+            request.UserId,
+            JsonSerializer.Serialize(new AccountDeletedOutboxPayload(request.UserId, now, ReasonCodeValue, request.CorrelationId)),
+            now), cancellationToken);
+        await _unitOfWork.CommitAsync(cancellationToken);
+        return Result<DeleteOwnAccountResult>.Success(new DeleteOwnAccountResult(request.UserId, now));
+    }
+
+    private sealed record AccountDeletedOutboxPayload(Guid UserId, DateTimeOffset DeletedAtUtc, string ReasonCode, string CorrelationId);
 }
 
 public sealed class ListSessionsQueryHandler : IRequestHandler<ListSessionsQuery, IReadOnlyCollection<SessionSummaryResult>>

@@ -4,6 +4,8 @@ using XanhNow.Security.Application.Abstractions.ChildApps.AuthLogin;
 using XanhNow.Security.Application.Abstractions.ChildApps.Jwt;
 using XanhNow.Security.Application.Abstractions.ChildApps.Passkey;
 using XanhNow.Security.Application.Abstractions.ChildApps.SmartOtp;
+using XanhNow.Security.Application.Abstractions.Ids;
+using XanhNow.Security.Application.Abstractions.Outbox;
 using XanhNow.Security.Application.Abstractions.Persistence;
 using XanhNow.Security.Application.Abstractions.Time;
 using XanhNow.Security.Application.Core;
@@ -155,6 +157,37 @@ public sealed class CoreSliceHandlerTests
         Assert.Contains(audit.Intents, x => x.Action == "session.logout_all" && x.Outcome == "succeeded");
     }
 
+    [Fact]
+    public async Task Delete_own_account_revokes_child_apps_disables_security_user_and_writes_outbox()
+    {
+        var userId = Guid.Parse("99999999-9999-9999-9999-999999999999");
+        var authLogin = new FakeAuthLoginClient();
+        var jwt = new FakeJwtTokenClient { RevokeAllResult = new JwtRevokeAllResult(3, Now) };
+        var passkey = new FakePasskeyClient { RevokeAllResult = new PasskeyRevokeAllResult(2, Now) };
+        var smartOtp = new FakeSmartOtpClient { RevokeAllDevicesResult = new SmartOtpRevokeAllDevicesResult(1, Now) };
+        var users = new FakeSecurityUserRepository();
+        var outbox = new FakeOutboxIntentWriter();
+        var unitOfWork = new FakeUnitOfWork();
+        var audit = new FakeAuditIntentWriter();
+        var handler = new DeleteOwnAccountCommandHandler(authLogin, jwt, passkey, smartOtp, users, outbox, new FakeIdGenerator(), unitOfWork, audit, new FixedClock());
+
+        var result = await handler.HandleAsync(new DeleteOwnAccountCommand(userId, "idem-1", "corr-1", "step-up"), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(userId, authLogin.LastAccountStateChangeRequest?.UserId);
+        Assert.Equal("Disabled", authLogin.LastAccountStateChangeRequest?.TargetState);
+        Assert.Equal(userId, jwt.LastRevokeAllRequest?.UserId);
+        Assert.True(jwt.LastRevokeAllRequest?.IncludeCurrentSession);
+        Assert.Equal(userId, passkey.LastRevokeAllRequest?.UserId);
+        Assert.Equal(userId, smartOtp.LastRevokeAllDevicesRequest?.UserId);
+
+        var user = await users.FindByIdAsync(userId, CancellationToken.None);
+        Assert.Equal(UserSecurityStatus.Disabled, user!.Status);
+        Assert.Single(outbox.Intents);
+        Assert.Equal("ACCOUNT_DELETED", outbox.Intents[0].EventType);
+        Assert.Contains(audit.Intents, x => x.Action == "account.delete_self" && x.Outcome == "succeeded");
+        Assert.Equal(1, unitOfWork.CommitCount);
+    }
     private sealed class FixedClock : IClock
     {
         public DateTimeOffset UtcNow => Now;
@@ -198,6 +231,22 @@ public sealed class CoreSliceHandlerTests
         }
     }
 
+    private sealed class FakeIdGenerator : IIdGenerator
+    {
+        public Guid NewId() => Guid.Parse("11111111-1111-1111-1111-111111111111");
+    }
+
+    private sealed class FakeOutboxIntentWriter : IOutboxIntentWriter
+    {
+        public List<OutboxIntent> Intents { get; } = [];
+
+        public ValueTask AppendAsync(OutboxIntent intent, CancellationToken cancellationToken)
+        {
+            Intents.Add(intent);
+            return ValueTask.CompletedTask;
+        }
+    }
+
     private sealed class FakeAuthLoginClient : IAuthLoginClient
     {
         public AuthLoginRegisterResult RegisterResult { get; init; } = new(Guid.NewGuid());
@@ -205,6 +254,7 @@ public sealed class CoreSliceHandlerTests
         public AuthLoginAccountStatusResult AccountStatusResult { get; init; } = new(Guid.NewGuid(), "+849******00", "Active", Now);
         public AuthLoginRegisterRequest? LastRegisterRequest { get; private set; }
         public AuthLoginPhoneChangeStartRequest? LastPhoneChangeStartRequest { get; private set; }
+        public AuthLoginAccountStateChangeRequest? LastAccountStateChangeRequest { get; private set; }
 
         public ValueTask<ChildCallResult<AuthLoginRegisterResult>> RegisterAsync(AuthLoginRegisterRequest request, CancellationToken cancellationToken)
         {
@@ -243,7 +293,10 @@ public sealed class CoreSliceHandlerTests
             => ValueTask.FromResult(ChildCallResult<AuthLoginAccountStatusResult>.Success(AccountStatusResult with { UserId = userId }));
 
         public ValueTask<ChildCallResult<AuthLoginAccountStateChangeResult>> ChangeAccountStateAsync(AuthLoginAccountStateChangeRequest request, CancellationToken cancellationToken)
-            => ValueTask.FromResult(ChildCallResult<AuthLoginAccountStateChangeResult>.Success(new AuthLoginAccountStateChangeResult(request.UserId, request.TargetState, Now)));
+        {
+            LastAccountStateChangeRequest = request;
+            return ValueTask.FromResult(ChildCallResult<AuthLoginAccountStateChangeResult>.Success(new AuthLoginAccountStateChangeResult(request.UserId, request.TargetState, Now)));
+        }
     }
 
     private sealed class FakeJwtTokenClient : IJwtTokenClient
@@ -252,6 +305,7 @@ public sealed class CoreSliceHandlerTests
         public IReadOnlyCollection<JwtSessionDescriptor> Sessions { get; init; } = [];
         public JwtRevokeAllResult RevokeAllResult { get; init; } = new(0, Now);
         public JwtIssueRequest? LastIssueRequest { get; private set; }
+        public JwtRevokeAllRequest? LastRevokeAllRequest { get; private set; }
 
         public ValueTask<ChildCallResult<JwtIssueResult>> IssueAsync(JwtIssueRequest request, CancellationToken cancellationToken)
         {
@@ -269,7 +323,10 @@ public sealed class CoreSliceHandlerTests
             => ValueTask.FromResult(ChildCallResult<IReadOnlyCollection<JwtSessionDescriptor>>.Success(Sessions));
 
         public ValueTask<ChildCallResult<JwtRevokeAllResult>> RevokeAllSessionsAsync(JwtRevokeAllRequest request, CancellationToken cancellationToken)
-            => ValueTask.FromResult(ChildCallResult<JwtRevokeAllResult>.Success(RevokeAllResult));
+        {
+            LastRevokeAllRequest = request;
+            return ValueTask.FromResult(ChildCallResult<JwtRevokeAllResult>.Success(RevokeAllResult));
+        }
     }
 
     private sealed class FakePasskeyClient : IPasskeyClient
@@ -277,10 +334,12 @@ public sealed class CoreSliceHandlerTests
         public PasskeyBeginResult BeginResult { get; init; } = new("ceremony", "{}");
         public PasskeyFinishResult FinishResult { get; init; } = new(Guid.NewGuid(), "credential", "passkey");
         public IReadOnlyCollection<PasskeyDescriptor> ListResult { get; init; } = [];
+        public PasskeyRevokeAllResult RevokeAllResult { get; init; } = new(0, Now);
         public PasskeyBeginRequest? LastBeginRequest { get; private set; }
         public string? LastRevokeCredentialId { get; private set; }
         public PasskeyRenameRequest? LastRenameRequest { get; private set; }
         public PasskeyStateChangeRequest? LastStateChangeRequest { get; private set; }
+        public PasskeyRevokeAllRequest? LastRevokeAllRequest { get; private set; }
 
         public ValueTask<ChildCallResult<PasskeyBeginResult>> BeginAsync(PasskeyBeginRequest request, CancellationToken cancellationToken)
         {
@@ -300,6 +359,11 @@ public sealed class CoreSliceHandlerTests
             return ValueTask.FromResult(ChildCallResult<bool>.Success(true));
         }
 
+        public ValueTask<ChildCallResult<PasskeyRevokeAllResult>> RevokeAllAsync(PasskeyRevokeAllRequest request, CancellationToken cancellationToken)
+        {
+            LastRevokeAllRequest = request;
+            return ValueTask.FromResult(ChildCallResult<PasskeyRevokeAllResult>.Success(RevokeAllResult));
+        }
         public ValueTask<ChildCallResult<bool>> RenameAsync(PasskeyRenameRequest request, CancellationToken cancellationToken)
         {
             LastRenameRequest = request;
@@ -318,6 +382,8 @@ public sealed class CoreSliceHandlerTests
         public SmartOtpBindBeginResult BeginBindResult { get; init; } = new("bind", "otpauth://totp/xanhnow");
         public SmartOtpChallengeResult CreateChallengeResult { get; init; } = new("challenge", Now.AddMinutes(5));
         public SmartOtpVerifyResult VerifyResult { get; init; } = new(Guid.NewGuid(), "totp");
+        public SmartOtpRevokeAllDevicesResult RevokeAllDevicesResult { get; init; } = new(0, Now);
+        public SmartOtpRevokeAllDevicesRequest? LastRevokeAllDevicesRequest { get; private set; }
 
         public ValueTask<ChildCallResult<SmartOtpBindBeginResult>> BeginBindAsync(SmartOtpBindBeginRequest request, CancellationToken cancellationToken)
             => ValueTask.FromResult(ChildCallResult<SmartOtpBindBeginResult>.Success(BeginBindResult));
@@ -330,5 +396,13 @@ public sealed class CoreSliceHandlerTests
 
         public ValueTask<ChildCallResult<SmartOtpVerifyResult>> VerifyAsync(SmartOtpVerifyRequest request, CancellationToken cancellationToken)
             => ValueTask.FromResult(ChildCallResult<SmartOtpVerifyResult>.Success(VerifyResult));
+
+        public ValueTask<ChildCallResult<SmartOtpRevokeAllDevicesResult>> RevokeAllDevicesAsync(SmartOtpRevokeAllDevicesRequest request, CancellationToken cancellationToken)
+        {
+            LastRevokeAllDevicesRequest = request;
+            return ValueTask.FromResult(ChildCallResult<SmartOtpRevokeAllDevicesResult>.Success(RevokeAllDevicesResult));
+        }
     }
 }
+
+
