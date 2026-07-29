@@ -163,6 +163,7 @@ public static class SecurityApiServiceCollectionExtensions
         services.AddScoped<IRequestHandler<GetSecurityProfileQuery, SecurityProfileResult>, GetSecurityProfileQueryHandler>();
         services.AddScoped<ChangeAccountStateCommandHandler>();
         services.AddScoped<IRequestHandler<ChangeAccountStateCommand, AccountStateResult>>(sp => sp.GetRequiredService<ChangeAccountStateCommandHandler>());
+        services.AddScoped<IRequestHandler<DeleteOwnAccountCommand, DeleteOwnAccountResult>, DeleteOwnAccountCommandHandler>();
         services.AddScoped<IRequestHandler<ListSessionsQuery, IReadOnlyCollection<SessionSummaryResult>>, ListSessionsQueryHandler>();
         services.AddScoped<LogoutAllSessionsCommandHandler>();
         services.AddScoped<IRequestHandler<LogoutAllSessionsCommand, LogoutAllSessionsResult>>(sp => sp.GetRequiredService<LogoutAllSessionsCommandHandler>());

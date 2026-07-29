@@ -9,6 +9,8 @@ public sealed record SmartOtpChallengeRequest(Guid UserId, string Purpose, strin
 public sealed record SmartOtpChallengeResult(string ChallengeId, DateTimeOffset ExpiresAt);
 public sealed record SmartOtpVerifyRequest(string ChallengeId, SensitiveString TotpCode);
 public sealed record SmartOtpVerifyResult(Guid UserId, string AssuranceLevel);
+public sealed record SmartOtpRevokeAllDevicesRequest(Guid UserId, string ReasonCode);
+public sealed record SmartOtpRevokeAllDevicesResult(int RevokedCount, DateTimeOffset RevokedAtUtc);
 
 public interface ISmartOtpClient
 {
@@ -16,4 +18,5 @@ public interface ISmartOtpClient
     ValueTask<ChildCallResult<bool>> FinishBindAsync(SmartOtpBindFinishRequest request, CancellationToken cancellationToken);
     ValueTask<ChildCallResult<SmartOtpChallengeResult>> CreateChallengeAsync(SmartOtpChallengeRequest request, CancellationToken cancellationToken);
     ValueTask<ChildCallResult<SmartOtpVerifyResult>> VerifyAsync(SmartOtpVerifyRequest request, CancellationToken cancellationToken);
+    ValueTask<ChildCallResult<SmartOtpRevokeAllDevicesResult>> RevokeAllDevicesAsync(SmartOtpRevokeAllDevicesRequest request, CancellationToken cancellationToken);
 }

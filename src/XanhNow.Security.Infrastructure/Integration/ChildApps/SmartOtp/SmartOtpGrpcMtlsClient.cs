@@ -21,6 +21,9 @@ internal sealed class SmartOtpGrpcMtlsClient : ChildAppJsonClient, ISmartOtpClie
     public ValueTask<ChildCallResult<SmartOtpChallengeResult>> CreateChallengeAsync(SmartOtpChallengeRequest request, CancellationToken cancellationToken)
         => PostAsync<SmartOtpChallengeRequest, SmartOtpChallengeResult>("/internal/v1/smart-otp/challenges", request, cancellationToken);
 
+    public ValueTask<ChildCallResult<SmartOtpRevokeAllDevicesResult>> RevokeAllDevicesAsync(SmartOtpRevokeAllDevicesRequest request, CancellationToken cancellationToken)
+        => PostAsync<SmartOtpRevokeAllDevicesRequest, SmartOtpRevokeAllDevicesResult>($"/internal/v1/smart-otp/users/{request.UserId}/devices/revoke-all", request, cancellationToken);
+
     public ValueTask<ChildCallResult<SmartOtpVerifyResult>> VerifyAsync(SmartOtpVerifyRequest request, CancellationToken cancellationToken)
         => PostAsync<SmartOtpVerifyRequest, SmartOtpVerifyResult>("/internal/v1/smart-otp/challenges/verify", request, cancellationToken);
 }

@@ -3,7 +3,9 @@ using Microsoft.AspNetCore.Mvc;
 using XanhNow.Security.Api.OpenApi;
 using XanhNow.Security.Api.Security;
 using XanhNow.Security.Application.Common.Requests;
+using XanhNow.Security.Application.Common.Results;
 using XanhNow.Security.Application.Core;
+using XanhNow.Security.Contracts;
 using XanhNow.Security.Contracts.Common.Enums;
 using XanhNow.Security.Contracts.Common.Responses;
 using XanhNow.Security.Contracts.V1.Account;
@@ -17,15 +19,18 @@ public sealed class AccountController : ApiControllerBase
     private readonly ApplicationExecutor<GetSecurityProfileQuery, SecurityProfileResult> _profile;
     private readonly ApplicationExecutor<ChangeAccountStateCommand, AccountStateResult> _stateChange;
     private readonly ApplicationExecutor<ProtectAccountFromTakeoverCommand, AccountStateResult> _protectTakeover;
+    private readonly ApplicationExecutor<DeleteOwnAccountCommand, DeleteOwnAccountResult> _deleteOwnAccount;
 
     public AccountController(
         ApplicationExecutor<GetSecurityProfileQuery, SecurityProfileResult> profile,
         ApplicationExecutor<ChangeAccountStateCommand, AccountStateResult> stateChange,
-        ApplicationExecutor<ProtectAccountFromTakeoverCommand, AccountStateResult> protectTakeover)
+        ApplicationExecutor<ProtectAccountFromTakeoverCommand, AccountStateResult> protectTakeover,
+        ApplicationExecutor<DeleteOwnAccountCommand, DeleteOwnAccountResult> deleteOwnAccount)
     {
         _profile = profile;
         _stateChange = stateChange;
         _protectTakeover = protectTakeover;
+        _deleteOwnAccount = deleteOwnAccount;
     }
 
     [HttpGet("me/security-profile")]
@@ -36,6 +41,25 @@ public sealed class AccountController : ApiControllerBase
         return FromApplicationResult(result, x => new SecurityProfileResponse(x.UserId, x.MaskedPhoneNumber, MapStatus(x.Status), MapTrust(x.DeviceTrustLevel), x.HasPasskey, x.HasSmartOtp, x.IsStale, x.UpdatedAtUtc));
     }
 
+    [HttpDelete("me")]
+    [EndpointMaturity("Current", "accounts.delete_self")]
+    public async Task<ActionResult> DeleteOwnAccountAsync(CancellationToken cancellationToken)
+    {
+        var idempotencyKey = Request.Headers[SecurityHeaders.IdempotencyKey].ToString();
+        if (string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            return ProblemEnvelope(Error.Validation(SecurityErrorCodes.ValidationFailed, "Idempotency-Key header is required."));
+        }
+
+        var correlationId = Request.Headers[SecurityHeaders.CorrelationId].ToString();
+        if (string.IsNullOrWhiteSpace(correlationId))
+        {
+            return ProblemEnvelope(Error.Validation(SecurityErrorCodes.ValidationFailed, "X-Correlation-Id header is required."));
+        }
+
+        var result = await _deleteOwnAccount.ExecuteAsync(new DeleteOwnAccountCommand(CurrentUserIdOrEmpty(), idempotencyKey, correlationId, Request.Headers[SecurityHeaders.StepUpGrant].ToString()), cancellationToken);
+        return result.IsSuccess ? NoContent() : ProblemEnvelope(result.Error ?? Error.Unexpected(SecurityErrorCodes.Unexpected, "Delete own account failed."));
+    }
     [Authorize(Policy = SecurityPolicyNames.Internal)]
     [HttpPost("{userId:guid}/lock")]
     [EndpointMaturity("Current", "accounts.lock")]

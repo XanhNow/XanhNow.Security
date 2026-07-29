@@ -7,6 +7,7 @@ public sealed record AccountStateResult(Guid UserId, string Status, DateTimeOffs
 public sealed record SecurityProfileResult(Guid UserId, string MaskedPhoneNumber, string Status, string DeviceTrustLevel, bool HasPasskey, bool HasSmartOtp, bool IsStale, DateTimeOffset UpdatedAtUtc);
 public sealed record SessionSummaryResult(string SessionId, Guid UserId, string Status, string? DeviceName, string? Platform, DateTimeOffset CreatedAtUtc, DateTimeOffset LastSeenAtUtc, DateTimeOffset ExpiresAtUtc);
 public sealed record LogoutAllSessionsResult(int RevokedCount, DateTimeOffset RevokedAtUtc);
+public sealed record DeleteOwnAccountResult(Guid UserId, DateTimeOffset DeletedAtUtc);
 
 public enum AccountStateTargetState
 {
@@ -26,6 +27,7 @@ public sealed record CancelPhoneChangeCommand(Guid UserId, Guid OperationId, str
 
 public sealed record GetSecurityProfileQuery(Guid UserId) : IQuery<SecurityProfileResult>;
 public sealed record ChangeAccountStateCommand(Guid UserId, AccountStateTargetState TargetState, string ReasonCode, string? Comment) : ICommand<AccountStateResult>;
+public sealed record DeleteOwnAccountCommand(Guid UserId, string IdempotencyKey, string CorrelationId, string? StepUpGrant) : ICommand<DeleteOwnAccountResult>, IIdempotentRequest;
 
 public sealed record ListSessionsQuery(Guid UserId) : IQuery<IReadOnlyCollection<SessionSummaryResult>>;
 public sealed record LogoutAllSessionsCommand(Guid UserId, string ReasonCode, bool IncludeCurrentSession) : ICommand<LogoutAllSessionsResult>;
