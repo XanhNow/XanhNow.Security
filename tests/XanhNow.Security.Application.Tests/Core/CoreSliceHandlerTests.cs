@@ -68,7 +68,7 @@ public sealed class CoreSliceHandlerTests
         var begin = await new BeginPasskeyRegistrationCommandHandler(passkey, new FixedClock())
             .HandleAsync(new BeginPasskeyRegistrationCommand(userId, "Phone passkey"), CancellationToken.None);
         var finish = await new FinishPasskeyRegistrationCommandHandler(passkey, new FixedClock())
-            .HandleAsync(new FinishPasskeyRegistrationCommand("ceremony-1", System.Text.Json.JsonDocument.Parse("""{"id":"credential-1"}""").RootElement.Clone(), "Phone"), CancellationToken.None);
+            .HandleAsync(new FinishPasskeyRegistrationCommand(userId, "ceremony-1", System.Text.Json.JsonDocument.Parse("""{"id":"credential-1"}""").RootElement.Clone(), "Phone"), CancellationToken.None);
         var list = await new ListPasskeysQueryHandler(passkey, new FixedClock())
             .HandleAsync(new ListPasskeysQuery(userId), CancellationToken.None);
         var revoke = await new RevokePasskeyCommandHandler(passkey, new FixedClock())

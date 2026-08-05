@@ -28,6 +28,7 @@
 
   <ItemGroup>
     <Protobuf Include="Integration/ChildApps/Jwt/Protos/token_provider.proto" GrpcServices="Client" />
+    <Protobuf Include="Integration/ChildApps/Passkey/Protos/passkey_provider.proto" GrpcServices="Client" />
   </ItemGroup>
 
 </Project>

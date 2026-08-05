@@ -1,0 +1,161 @@
+syntax = "proto3";
+
+option csharp_namespace = "XanhNow.PasskeyProvider.Grpc.Contracts";
+
+package xanhnow.auth.passkey.v1;
+
+service PasskeyProvider {
+  rpc RegisterPasskey (RegisterPasskeyRequest) returns (RegisterPasskeyResponse);
+  rpc AuthenticatePasskey (AuthenticatePasskeyRequest) returns (AuthenticatePasskeyResponse);
+  rpc ValidatePasskey (ValidatePasskeyRequest) returns (ValidatePasskeyResponse);
+  rpc BeginRegisterPasskey (BeginRegisterPasskeyRequest) returns (BeginRegisterPasskeyResponse);
+  rpc FinishRegisterPasskey (FinishRegisterPasskeyRequest) returns (FinishRegisterPasskeyResponse);
+  rpc BeginPasskeyLogin (BeginPasskeyLoginRequest) returns (BeginPasskeyLoginResponse);
+  rpc FinishPasskeyLogin (FinishPasskeyLoginRequest) returns (FinishPasskeyLoginResponse);
+  rpc RevokePasskey (RevokePasskeyRequest) returns (RevokePasskeyResponse);
+  rpc ListUserPasskeys (ListUserPasskeysRequest) returns (ListUserPasskeysResponse);
+}
+
+message DeviceInfo {
+  string device_id = 1;
+  string device_name = 2;
+  string operating_system = 3;
+  string browser = 4;
+  string user_agent = 5;
+  string platform = 6;
+  string ip_address = 7;
+  string location = 8;
+}
+
+message BeginRegisterPasskeyRequest {
+  string external_user_id = 1;
+  string username = 2;
+  string display_name = 3;
+  DeviceInfo device = 4;
+  string request_id = 5;
+}
+
+message RegisterPasskeyRequest {
+  string user_id = 1;
+  string username = 2;
+  string display_name = 3;
+  DeviceInfo device = 4;
+  string request_id = 5;
+}
+
+message RegisterPasskeyResponse {
+  string ceremony_id = 1;
+  string public_key_credential_creation_options_json = 2;
+  int64 expires_at_unix_ms = 3;
+}
+
+message BeginRegisterPasskeyResponse {
+  string ceremony_id = 1;
+  string public_key_credential_creation_options_json = 2;
+  int64 expires_at_unix_ms = 3;
+}
+
+message AuthenticatePasskeyRequest {
+  string ceremony_id = 1;
+  string assertion_response_json = 2;
+  DeviceInfo device = 3;
+  string request_id = 4;
+}
+
+message AuthenticatePasskeyResponse {
+  bool success = 1;
+  string user_id = 2;
+  string passkey_id = 3;
+  string credential_id = 4;
+  uint32 sign_count = 5;
+  string amr = 6;
+}
+
+message ValidatePasskeyRequest {
+  string ceremony_id = 1;
+  string assertion_response_json = 2;
+  DeviceInfo device = 3;
+  string request_id = 4;
+}
+
+message ValidatePasskeyResponse {
+  bool valid = 1;
+  string user_id = 2;
+  string passkey_id = 3;
+  string credential_id = 4;
+  string amr = 5;
+  repeated string roles = 6;
+}
+
+message FinishRegisterPasskeyRequest {
+  string ceremony_id = 1;
+  string external_user_id = 2;
+  string attestation_response_json = 3;
+  DeviceInfo device = 4;
+  string request_id = 5;
+}
+
+message FinishRegisterPasskeyResponse {
+  bool success = 1;
+  string passkey_id = 2;
+  string credential_id = 3;
+  string status = 4;
+}
+
+message BeginPasskeyLoginRequest {
+  string username_hint = 1;
+  string request_id = 2;
+}
+
+message BeginPasskeyLoginResponse {
+  string ceremony_id = 1;
+  string public_key_credential_request_options_json = 2;
+  int64 expires_at_unix_ms = 3;
+}
+
+message FinishPasskeyLoginRequest {
+  string ceremony_id = 1;
+  string assertion_response_json = 2;
+  DeviceInfo device = 3;
+  string request_id = 4;
+}
+
+message FinishPasskeyLoginResponse {
+  bool success = 1;
+  string external_user_id = 2;
+  string passkey_id = 3;
+  string credential_id = 4;
+  uint32 sign_count = 5;
+  string amr = 6;
+}
+
+message RevokePasskeyRequest {
+  string passkey_id = 1;
+  string external_user_id = 2;
+  string reason = 3;
+  string requested_by = 4;
+  string request_id = 5;
+}
+
+message RevokePasskeyResponse {
+  bool success = 1;
+  string status = 2;
+  int64 revoked_at_unix_ms = 3;
+}
+
+message ListUserPasskeysRequest {
+  string external_user_id = 1;
+}
+
+message PasskeySummary {
+  string passkey_id = 1;
+  string credential_id = 2;
+  string status = 3;
+  string device_name = 4;
+  int64 created_at_unix_ms = 5;
+  int64 last_used_at_unix_ms = 6;
+}
+
+message ListUserPasskeysResponse {
+  repeated PasskeySummary items = 1;
+}

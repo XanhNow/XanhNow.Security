@@ -2,9 +2,10 @@ using XanhNow.Security.Application.Abstractions.ChildApps;
 
 namespace XanhNow.Security.Application.Abstractions.ChildApps.Passkey;
 
-public sealed record PasskeyBeginRequest(Guid UserId, string Purpose);
+public sealed record PasskeyDeviceContext(string? DeviceId, string? DeviceName, string? Platform, string? IpAddress, string? UserAgent);
+public sealed record PasskeyBeginRequest(Guid UserId, string Purpose, string? DisplayName, string? LoginIdentifier, PasskeyDeviceContext? Device);
 public sealed record PasskeyBeginResult(string CeremonyId, string PublicOptionsJson);
-public sealed record PasskeyFinishRequest(string CeremonyId, string ClientResponseJson);
+public sealed record PasskeyFinishRequest(Guid UserId, string CeremonyId, string ClientResponseJson, PasskeyDeviceContext? Device);
 public sealed record PasskeyFinishResult(Guid UserId, string CredentialId, string AssuranceLevel);
 public sealed record PasskeyDescriptor(string CredentialId, string DisplayName, bool Revoked);
 public sealed record PasskeyRenameRequest(Guid UserId, string CredentialId, string DisplayName);
