@@ -13,28 +13,28 @@ internal sealed class AuthLoginRestClient : ChildAppJsonClient, IAuthLoginClient
     }
 
     public ValueTask<ChildCallResult<AuthLoginRegisterResult>> RegisterAsync(AuthLoginRegisterRequest request, CancellationToken cancellationToken)
-        => PostAsync<AuthLoginRegisterRequest, AuthLoginRegisterResult>("/api/auth/register", request, cancellationToken);
+        => PostAsync<AuthLoginRegisterWireRequest, AuthLoginRegisterResult>("/api/auth/register", new AuthLoginRegisterWireRequest(request.PhoneNumber, request.Password.Value, request.DisplayName), cancellationToken);
 
     public ValueTask<ChildCallResult<AuthLoginPasswordResult>> LoginWithPasswordAsync(AuthLoginPasswordRequest request, CancellationToken cancellationToken)
-        => PostAsync<AuthLoginPasswordRequest, AuthLoginPasswordResult>("/api/auth/login", request, cancellationToken);
+        => PostAsync<AuthLoginPasswordWireRequest, AuthLoginPasswordResult>("/api/auth/login", new AuthLoginPasswordWireRequest(request.PhoneNumber, request.Password.Value), cancellationToken);
 
     public ValueTask<ChildCallResult<AuthLoginOperationResult>> ChangePasswordAsync(AuthLoginChangePasswordRequest request, CancellationToken cancellationToken)
-        => PostAsync<AuthLoginChangePasswordRequest, AuthLoginOperationResult>("/internal/v1/password/change", request, cancellationToken);
+        => PostAsync<AuthLoginChangePasswordWireRequest, AuthLoginOperationResult>("/internal/v1/password/change", new AuthLoginChangePasswordWireRequest(request.UserId, request.CurrentPassword.Value, request.NewPassword.Value, request.ReasonCode), cancellationToken);
 
     public ValueTask<ChildCallResult<AuthLoginOperationResult>> StartPasswordResetAsync(AuthLoginPasswordResetStartRequest request, CancellationToken cancellationToken)
         => PostAsync<AuthLoginPasswordResetStartRequest, AuthLoginOperationResult>("/internal/v1/password/reset/start", request, cancellationToken);
 
     public ValueTask<ChildCallResult<AuthLoginOperationResult>> CompletePasswordResetAsync(AuthLoginPasswordResetCompleteRequest request, CancellationToken cancellationToken)
-        => PostAsync<AuthLoginPasswordResetCompleteRequest, AuthLoginOperationResult>("/internal/v1/password/reset/complete", request, cancellationToken);
+        => PostAsync<AuthLoginPasswordResetCompleteWireRequest, AuthLoginOperationResult>("/internal/v1/password/reset/complete", new AuthLoginPasswordResetCompleteWireRequest(request.ResetOperationId, request.NewPassword.Value), cancellationToken);
 
     public ValueTask<ChildCallResult<AuthLoginAccountStateChangeResult>> ForcePasswordChangeAsync(AuthLoginForcePasswordChangeRequest request, CancellationToken cancellationToken)
-        => PostAsync<AuthLoginForcePasswordChangeRequest, AuthLoginAccountStateChangeResult>("/internal/v1/password/force-change", request, cancellationToken);
+        => PostAsync<AuthLoginForcePasswordChangeWireRequest, AuthLoginAccountStateChangeResult>("/internal/v1/password/force-change", new AuthLoginForcePasswordChangeWireRequest(request.UserId, request.NewPassword.Value, request.ReasonCode), cancellationToken);
 
     public ValueTask<ChildCallResult<AuthLoginOperationResult>> StartPhoneChangeAsync(AuthLoginPhoneChangeStartRequest request, CancellationToken cancellationToken)
         => PostAsync<AuthLoginPhoneChangeStartRequest, AuthLoginOperationResult>("/internal/v1/phone/change/start", request, cancellationToken);
 
     public ValueTask<ChildCallResult<AuthLoginOperationResult>> ConfirmPhoneChangeAsync(AuthLoginPhoneChangeConfirmRequest request, CancellationToken cancellationToken)
-        => PostAsync<AuthLoginPhoneChangeConfirmRequest, AuthLoginOperationResult>("/internal/v1/phone/change/confirm", request, cancellationToken);
+        => PostAsync<AuthLoginPhoneChangeConfirmWireRequest, AuthLoginOperationResult>("/internal/v1/phone/change/confirm", new AuthLoginPhoneChangeConfirmWireRequest(request.UserId, request.OperationId, request.Otp.Value), cancellationToken);
 
     public ValueTask<ChildCallResult<AuthLoginOperationResult>> CancelPhoneChangeAsync(AuthLoginPhoneChangeCancelRequest request, CancellationToken cancellationToken)
         => PostAsync<AuthLoginPhoneChangeCancelRequest, AuthLoginOperationResult>("/internal/v1/phone/change/cancel", request, cancellationToken);
@@ -45,3 +45,10 @@ internal sealed class AuthLoginRestClient : ChildAppJsonClient, IAuthLoginClient
     public ValueTask<ChildCallResult<AuthLoginAccountStateChangeResult>> ChangeAccountStateAsync(AuthLoginAccountStateChangeRequest request, CancellationToken cancellationToken)
         => PostAsync<AuthLoginAccountStateChangeRequest, AuthLoginAccountStateChangeResult>($"/internal/v1/accounts/{request.UserId}/state", request, cancellationToken);
 }
+
+internal sealed record AuthLoginRegisterWireRequest(string PhoneNumber, string Password, string DisplayName);
+internal sealed record AuthLoginPasswordWireRequest(string PhoneNumber, string Password);
+internal sealed record AuthLoginChangePasswordWireRequest(Guid UserId, string CurrentPassword, string NewPassword, string ReasonCode);
+internal sealed record AuthLoginPasswordResetCompleteWireRequest(string ResetOperationId, string NewPassword);
+internal sealed record AuthLoginForcePasswordChangeWireRequest(Guid UserId, string NewPassword, string ReasonCode);
+internal sealed record AuthLoginPhoneChangeConfirmWireRequest(Guid UserId, Guid OperationId, string Otp);
