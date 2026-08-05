@@ -47,7 +47,7 @@ public sealed class PasskeysController : ApiControllerBase
     [EndpointMaturity("Current", "passkeys.registration.finish")]
     public async Task<ActionResult<ApiResponse<PasskeyStateResponse>>> FinishRegistrationAsync(FinishPasskeyRegistrationRequest request, CancellationToken cancellationToken)
     {
-        var result = await _finishRegistration.ExecuteAsync(new FinishPasskeyRegistrationCommand(request.CeremonyId, request.Credential, request.DeviceName), cancellationToken);
+        var result = await _finishRegistration.ExecuteAsync(new FinishPasskeyRegistrationCommand(CurrentUserIdOrEmpty(), request.CeremonyId, request.Credential, request.DeviceName), cancellationToken);
         return FromApplicationResult(result, MapState);
     }
 
