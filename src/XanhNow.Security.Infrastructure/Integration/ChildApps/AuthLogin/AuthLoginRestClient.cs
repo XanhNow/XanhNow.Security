@@ -13,10 +13,10 @@ internal sealed class AuthLoginRestClient : ChildAppJsonClient, IAuthLoginClient
     }
 
     public ValueTask<ChildCallResult<AuthLoginRegisterResult>> RegisterAsync(AuthLoginRegisterRequest request, CancellationToken cancellationToken)
-        => PostAsync<AuthLoginRegisterRequest, AuthLoginRegisterResult>("/api/v1/auth/register", request, cancellationToken);
+        => PostAsync<AuthLoginRegisterRequest, AuthLoginRegisterResult>("/api/auth/register", request, cancellationToken);
 
     public ValueTask<ChildCallResult<AuthLoginPasswordResult>> LoginWithPasswordAsync(AuthLoginPasswordRequest request, CancellationToken cancellationToken)
-        => PostAsync<AuthLoginPasswordRequest, AuthLoginPasswordResult>("/api/v1/auth/login/password", request, cancellationToken);
+        => PostAsync<AuthLoginPasswordRequest, AuthLoginPasswordResult>("/api/auth/login", request, cancellationToken);
 
     public ValueTask<ChildCallResult<AuthLoginOperationResult>> ChangePasswordAsync(AuthLoginChangePasswordRequest request, CancellationToken cancellationToken)
         => PostAsync<AuthLoginChangePasswordRequest, AuthLoginOperationResult>("/internal/v1/password/change", request, cancellationToken);
