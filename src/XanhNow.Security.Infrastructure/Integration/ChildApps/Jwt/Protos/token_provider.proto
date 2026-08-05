@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+option csharp_namespace = "GrpcTokenProvider.Grpc";
+
+package grpc_token_provider;
+
+import "google/protobuf/timestamp.proto";
+
+service TokenProvider {
+  rpc IssueToken (IssueTokenRequest) returns (TokenPairResponse);
+  rpc RefreshToken (RefreshTokenRequest) returns (TokenPairResponse);
+  rpc ValidateToken (ValidateTokenRequest) returns (ValidateTokenResponse);
+  rpc RevokeToken (RevokeTokenRequest) returns (RevokeTokenResponse);
+}
+
+message IssueTokenRequest {
+  string subject = 1;
+  repeated string roles = 2;
+  repeated string scopes = 3;
+}
+
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+message ValidateTokenRequest {
+  string jwt = 1;
+}
+
+message RevokeTokenRequest {
+  string refresh_token = 1;
+}
+
+message TokenPairResponse {
+  string jwt = 1;
+  string refresh_token = 2;
+  google.protobuf.Timestamp jwt_expiry = 3;
+  google.protobuf.Timestamp refresh_token_expiry = 4;
+}
+
+message ValidateTokenResponse {
+  bool is_valid = 1;
+  string subject = 2;
+  repeated string roles = 3;
+  repeated string scopes = 4;
+}
+
+message RevokeTokenResponse {
+  bool is_revoked = 1;
+  google.protobuf.Timestamp revoked_at = 2;
+}
