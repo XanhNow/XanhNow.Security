@@ -1,3 +1,4 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
@@ -25,15 +26,36 @@ public sealed class SecurityAuthenticationHandler : AuthenticationHandler<Authen
 
         if (Request.Headers.Authorization.FirstOrDefault() is { } authorization && authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
         {
-            return Task.FromResult(AuthenticateResult.Success(CreateTicket("user", "authenticated-user", "user")));
+            var token = authorization["Bearer ".Length..].Trim();
+            var subject = TryReadSubject(token);
+            if (string.IsNullOrWhiteSpace(subject))
+            {
+                return Task.FromResult(AuthenticateResult.Fail("Bearer token subject is missing."));
+            }
+
+            return Task.FromResult(AuthenticateResult.Success(CreateTicket("user", subject, "user")));
         }
 
         return Task.FromResult(AuthenticateResult.NoResult());
     }
 
+    private static string? TryReadSubject(string token)
+    {
+        try
+        {
+            var jwt = new JwtSecurityTokenHandler().ReadJwtToken(token);
+            return jwt.Claims.FirstOrDefault(claim => claim.Type == JwtRegisteredClaimNames.Sub || claim.Type == "sub")?.Value;
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
+
     private static AuthenticationTicket CreateTicket(string callerType, string name, string role)
     {
         var identity = new ClaimsIdentity(SchemeName);
+        identity.AddClaim(new Claim("sub", name));
         identity.AddClaim(new Claim(ClaimTypes.NameIdentifier, name));
         identity.AddClaim(new Claim(ClaimTypes.Name, name));
         identity.AddClaim(new Claim(ClaimTypes.Role, role));
