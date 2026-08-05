@@ -56,7 +56,7 @@ public static class SecurityIntegrationServiceCollectionExtensions
         services.AddSingleton<IKafkaSecurityEventProducer, KafkaSecurityEventProducer>();
 
         services.AddSingleton<IAuthLoginClient>(sp => new AuthLoginRestClient(CreateHttpClient(sp.GetRequiredService<SecurityIntegrationOptions>().AuthLogin), sp.GetRequiredService<SecurityIntegrationOptions>()));
-        services.AddSingleton<IJwtTokenClient>(sp => new JwtTokenGrpcFacadeClient(CreateHttpClient(sp.GetRequiredService<SecurityIntegrationOptions>().Jwt), sp.GetRequiredService<SecurityIntegrationOptions>()));
+        services.AddSingleton<IJwtTokenClient>(sp => new JwtTokenGrpcFacadeClient(sp.GetRequiredService<SecurityIntegrationOptions>()));
         services.AddSingleton<IPasskeyClient>(sp => new PasskeyGrpcFacadeClient(CreateHttpClient(sp.GetRequiredService<SecurityIntegrationOptions>().Passkey), sp.GetRequiredService<SecurityIntegrationOptions>()));
         services.AddSingleton<ISmartOtpClient>(sp => new SmartOtpGrpcMtlsClient(CreateHttpClient(sp.GetRequiredService<SecurityIntegrationOptions>().SmartOtp), sp.GetRequiredService<SecurityIntegrationOptions>()));
 
