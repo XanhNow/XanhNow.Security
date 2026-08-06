@@ -37,16 +37,16 @@ public sealed class SmartOtpController : ApiControllerBase
     [EndpointMaturity("Current", "smart_otp.enroll.begin")]
     public async Task<ActionResult<ApiResponse<BeginSmartOtpEnrollmentResponse>>> BeginEnrollmentAsync(BeginSmartOtpEnrollmentRequest request, CancellationToken cancellationToken)
     {
-        var result = await _beginEnrollment.ExecuteAsync(new BeginSmartOtpEnrollmentCommand(CurrentUserIdOrEmpty(), request.DeviceName), cancellationToken);
-        return FromApplicationResult(result, x => new BeginSmartOtpEnrollmentResponse(x.EnrollmentId, x.ProvisioningUri, x.ManualEntryKey, x.ExpiresAtUtc));
+        var result = await _beginEnrollment.ExecuteAsync(new BeginSmartOtpEnrollmentCommand(CurrentUserIdOrEmpty(), request.DeviceName, request.Platform, request.AppInstanceIdHash, request.KeyAlgorithm, request.CandidatePublicKeySpki, request.CandidatePublicKeyThumbprint), cancellationToken);
+        return FromApplicationResult(result, x => new BeginSmartOtpEnrollmentResponse(x.EnrollmentId, x.ServerChallenge, x.ChallengeFormatVersion, x.ExpiresAtUtc, x.Status));
     }
 
     [HttpPost("devices/enroll/confirm")]
     [EndpointMaturity("Current", "smart_otp.enroll.confirm")]
     public async Task<ActionResult<ApiResponse<SmartOtpDeviceStateResponse>>> ConfirmEnrollmentAsync(ConfirmSmartOtpEnrollmentRequest request, CancellationToken cancellationToken)
     {
-        var result = await _confirmEnrollment.ExecuteAsync(new ConfirmSmartOtpEnrollmentCommand(request.EnrollmentId, request.Otp), cancellationToken);
-        return FromApplicationResult(result, x => new SmartOtpDeviceStateResponse(x.DeviceId, x.IsEnabled, x.UpdatedAtUtc));
+        var result = await _confirmEnrollment.ExecuteAsync(new ConfirmSmartOtpEnrollmentCommand(CurrentUserIdOrEmpty(), request.EnrollmentId, request.ClientNonce, request.DeviceSignature), cancellationToken);
+        return FromApplicationResult(result, x => new SmartOtpDeviceStateResponse(x.DeviceId, x.DeviceKeyId, x.Status, x.IsEnabled, x.UpdatedAtUtc));
     }
 
     [HttpPost("step-up/start")]

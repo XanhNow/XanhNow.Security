@@ -1,0 +1,113 @@
+syntax = "proto3";
+
+option csharp_namespace = "XanhNow.Auth.SmartOtp.Grpc.Contracts";
+package xanhnow.auth.smartotp.v1;
+
+service SmartOtpProvider {
+  rpc BeginBindOtpDevice (BeginBindOtpDeviceRequest) returns (BeginBindOtpDeviceResponse);
+  rpc CompleteBindOtpDevice (CompleteBindOtpDeviceRequest) returns (CompleteBindOtpDeviceResponse);
+  rpc GetOtpDeviceStatus (GetOtpDeviceStatusRequest) returns (OtpDeviceStatusResponse);
+  rpc SuspendOtpDevice (ChangeOtpDeviceStateRequest) returns (OtpDeviceStatusResponse);
+  rpc LockOtpDevice (ChangeOtpDeviceStateRequest) returns (OtpDeviceStatusResponse);
+  rpc DisableOtpDevice (ChangeOtpDeviceStateRequest) returns (OtpDeviceStatusResponse);
+  rpc RevokeOtpDevice (ChangeOtpDeviceStateRequest) returns (OtpDeviceStatusResponse);
+  rpc CreateOtpChallenge (CreateOtpChallengeRequest) returns (CreateOtpChallengeResponse);
+  rpc RevealOtpChallenge (RevealOtpChallengeRequest) returns (RevealOtpChallengeResponse);
+  rpc VerifyOtpChallenge (VerifyOtpChallengeRequest) returns (VerifyOtpChallengeResponse);
+  rpc CancelOtpChallenge (CancelOtpChallengeRequest) returns (CancelOtpChallengeResponse);
+  rpc GetOtpChallengeStatus (GetOtpChallengeStatusRequest) returns (OtpChallengeStatusResponse);
+}
+
+message RequestMetadata {
+  string origin_service_id = 1;
+  string correlation_id = 2;
+  string request_id = 3;
+  string idempotency_key = 4;
+}
+
+message BeginBindOtpDeviceRequest {
+  string external_user_id = 1;
+  string device_name = 2;
+  string platform = 3;
+  bytes app_instance_id_hash = 4;
+  string key_algorithm = 5;
+  bytes candidate_public_key_spki = 6;
+  bytes candidate_public_key_thumbprint = 7;
+  RequestMetadata metadata = 8;
+}
+message BeginBindOtpDeviceResponse {
+  string binding_id = 1;
+  bytes server_challenge = 2;
+  int32 challenge_format_version = 3;
+  int64 expires_at_unix_ms = 4;
+  string status = 5;
+}
+message CompleteBindOtpDeviceRequest {
+  string binding_id = 1;
+  string external_user_id = 2;
+  bytes device_signature = 3;
+  bytes client_nonce = 4;
+  RequestMetadata metadata = 5;
+}
+message CompleteBindOtpDeviceResponse {
+  string device_id = 1;
+  string device_key_id = 2;
+  string status = 3;
+  int64 bound_at_unix_ms = 4;
+}
+message GetOtpDeviceStatusRequest { string device_id = 1; string external_user_id = 2; RequestMetadata metadata = 3; }
+message ChangeOtpDeviceStateRequest { string device_id = 1; string external_user_id = 2; string reason_code = 3; int32 lock_seconds = 4; RequestMetadata metadata = 5; }
+message OtpDeviceStatusResponse { string device_id = 1; string external_user_id = 2; string status = 3; int64 locked_until_unix_ms = 4; int64 bound_at_unix_ms = 5; int64 last_seen_at_unix_ms = 6; }
+
+message CreateOtpChallengeRequest {
+  string external_user_id = 1;
+  string device_id = 2;
+  string purpose = 3;
+  string external_transaction_id = 4;
+  bytes transaction_digest = 5;
+  string policy_code = 6;
+  RequestMetadata metadata = 7;
+}
+message CreateOtpChallengeResponse {
+  string challenge_id = 1;
+  string device_id = 2;
+  string device_key_id = 3;
+  string status = 4;
+  int64 expires_at_unix_ms = 5;
+  int32 code_length = 6;
+  int32 max_attempts = 7;
+  int32 max_reveals = 8;
+  string policy_code = 9;
+  int32 policy_version = 10;
+}
+message RevealOtpChallengeRequest {
+  string challenge_id = 1;
+  string external_user_id = 2;
+  string device_id = 3;
+  string device_key_id = 4;
+  string purpose = 5;
+  string external_transaction_id = 6;
+  bytes transaction_digest = 7;
+  string reveal_request_id = 8;
+  int64 issued_at_unix_ms = 9;
+  int64 proof_expires_at_unix_ms = 10;
+  bytes device_signature = 11;
+  RequestMetadata metadata = 12;
+}
+message RevealOtpChallengeResponse { string challenge_id = 1; string otp_code = 2; int64 expires_at_unix_ms = 3; int32 reveal_count = 4; int64 released_at_unix_ms = 5; }
+message VerifyOtpChallengeRequest {
+  string challenge_id = 1;
+  string external_user_id = 2;
+  string device_id = 3;
+  string purpose = 4;
+  string external_transaction_id = 5;
+  bytes transaction_digest = 6;
+  string otp_code = 7;
+  string verification_request_id = 8;
+  RequestMetadata metadata = 9;
+}
+message VerifyOtpChallengeResponse { string challenge_id = 1; bool success = 2; string result_code = 3; string status = 4; int32 failed_attempts = 5; int64 verified_at_unix_ms = 6; }
+message CancelOtpChallengeRequest { string challenge_id = 1; string reason_code = 2; RequestMetadata metadata = 3; }
+message CancelOtpChallengeResponse { bool success = 1; }
+message GetOtpChallengeStatusRequest { string challenge_id = 1; RequestMetadata metadata = 2; }
+message OtpChallengeStatusResponse { string challenge_id = 1; string status = 2; int64 expires_at_unix_ms = 3; int32 failed_attempts = 4; int32 reveal_count = 5; int64 verified_at_unix_ms = 6; }

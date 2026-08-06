@@ -285,9 +285,9 @@ public sealed class BeginSmartOtpEnrollmentCommandHandler : IRequestHandler<Begi
 
     public async Task<Result<BeginSmartOtpEnrollmentResult>> HandleAsync(BeginSmartOtpEnrollmentCommand request, CancellationToken cancellationToken)
     {
-        var child = await _smartOtp.BeginBindAsync(new SmartOtpBindBeginRequest(request.UserId, request.DeviceName), cancellationToken);
+        var child = await _smartOtp.BeginBindAsync(new SmartOtpBindBeginRequest(request.UserId, request.DeviceName, request.Platform, request.AppInstanceIdHash, request.KeyAlgorithm, request.CandidatePublicKeySpki, request.CandidatePublicKeyThumbprint), cancellationToken);
         return child.IsSuccess && child.Value is not null
-            ? Result<BeginSmartOtpEnrollmentResult>.Success(new BeginSmartOtpEnrollmentResult(child.Value.BindingId, child.Value.ProvisioningUri, "[REDACTED]", _clock.UtcNow.AddMinutes(10)))
+            ? Result<BeginSmartOtpEnrollmentResult>.Success(new BeginSmartOtpEnrollmentResult(child.Value.BindingId, child.Value.ServerChallengeBase64, child.Value.ChallengeFormatVersion, child.Value.ExpiresAtUtc, child.Value.Status))
             : CoreSliceHandler.ChildFailure<BeginSmartOtpEnrollmentResult>(child.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Smart OTP begin bind failed.", true));
     }
 }
@@ -305,9 +305,9 @@ public sealed class ConfirmSmartOtpEnrollmentCommandHandler : IRequestHandler<Co
 
     public async Task<Result<SmartOtpDeviceStateResult>> HandleAsync(ConfirmSmartOtpEnrollmentCommand request, CancellationToken cancellationToken)
     {
-        var child = await _smartOtp.FinishBindAsync(new SmartOtpBindFinishRequest(request.EnrollmentId, new SensitiveString(request.Otp)), cancellationToken);
-        return child.IsSuccess
-            ? Result<SmartOtpDeviceStateResult>.Success(new SmartOtpDeviceStateResult(request.EnrollmentId, true, _clock.UtcNow))
+        var child = await _smartOtp.FinishBindAsync(new SmartOtpBindFinishRequest(request.UserId, request.EnrollmentId, request.ClientNonce, request.DeviceSignature), cancellationToken);
+        return child.IsSuccess && child.Value is not null
+            ? Result<SmartOtpDeviceStateResult>.Success(new SmartOtpDeviceStateResult(child.Value.DeviceId, child.Value.DeviceKeyId, child.Value.Status, string.Equals(child.Value.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase), child.Value.BoundAtUtc))
             : CoreSliceHandler.ChildFailure<SmartOtpDeviceStateResult>(child.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Smart OTP confirm bind failed.", true));
     }
 }
