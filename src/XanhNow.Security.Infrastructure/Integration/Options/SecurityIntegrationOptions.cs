@@ -40,11 +40,19 @@ public sealed class VaultIntegrationOptions
 
 public sealed class RedisIntegrationOptions
 {
+    public string Mode { get; set; } = "InMemory";
     public string Configuration { get; set; } = string.Empty;
+    public string BootstrapEndpoints { get; set; } = string.Empty;
+    public string SecretPath { get; set; } = string.Empty;
+    public string PasswordField { get; set; } = "password";
+    public bool TlsEnabled { get; set; }
     public string KeyPrefix { get; set; } = "xanhnow:security";
     public TimeSpan DefaultCacheTtl { get; set; } = TimeSpan.FromMinutes(5);
     public TimeSpan IdempotencyTtl { get; set; } = TimeSpan.FromMinutes(15);
     public TimeSpan LockTtl { get; set; } = TimeSpan.FromSeconds(30);
+    public int ConnectTimeoutMs { get; set; } = 5000;
+    public int OperationTimeoutMs { get; set; } = 3000;
+    public bool AbortOnConnectFail { get; set; }
 }
 
 public sealed class KafkaIntegrationOptions

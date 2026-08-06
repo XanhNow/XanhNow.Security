@@ -21,6 +21,19 @@ public sealed class SecurityIntegrationOptionsValidator
             errors.Add("ContractVersion is required.");
         }
 
+        if (!string.Equals(options.Redis.Mode, "InMemory", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(options.Redis.Mode, "Redis", StringComparison.OrdinalIgnoreCase))
+        {
+            errors.Add("Redis Mode must be InMemory or Redis.");
+        }
+
+        if (string.Equals(options.Redis.Mode, "Redis", StringComparison.OrdinalIgnoreCase) &&
+            string.IsNullOrWhiteSpace(options.Redis.Configuration) &&
+            string.IsNullOrWhiteSpace(options.Redis.BootstrapEndpoints))
+        {
+            errors.Add("Redis Configuration or BootstrapEndpoints is required when Redis Mode is Redis.");
+        }
+
         if (!string.IsNullOrWhiteSpace(options.Redis.KeyPrefix) && options.Redis.KeyPrefix.Any(char.IsWhiteSpace))
         {
             errors.Add("Redis KeyPrefix must not contain whitespace.");
