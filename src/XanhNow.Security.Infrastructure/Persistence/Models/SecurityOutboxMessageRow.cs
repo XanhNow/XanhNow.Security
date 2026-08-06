@@ -34,4 +34,37 @@ public sealed class SecurityOutboxMessageRow : Entity<Guid>
     public DateTimeOffset? PublishedAt { get; private set; }
     public DateTimeOffset OccurredAt { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
+
+    public void MarkPublishing()
+    {
+        Status = "PUBLISHING";
+    }
+
+    public void MarkPublished(DateTimeOffset publishedAt)
+    {
+        Status = "PUBLISHED";
+        PublishedAt = publishedAt;
+        LastError = null;
+        NextRetryAt = null;
+    }
+
+    public void MarkFailed(string error, DateTimeOffset nextRetryAt)
+    {
+        RetryCount++;
+        Status = "FAILED";
+        LastError = string.IsNullOrWhiteSpace(error)
+            ? "Kafka publish failed."
+            : error.Length > 512 ? error[..512] : error;
+        NextRetryAt = nextRetryAt;
+    }
+
+    public void MarkDeadLetter(string error)
+    {
+        RetryCount++;
+        Status = "DEAD_LETTER";
+        LastError = string.IsNullOrWhiteSpace(error)
+            ? "Kafka publish failed."
+            : error.Length > 512 ? error[..512] : error;
+        NextRetryAt = null;
+    }
 }

@@ -57,8 +57,16 @@ public sealed class RedisIntegrationOptions
 
 public sealed class KafkaIntegrationOptions
 {
+    public string Mode { get; set; } = "InMemory";
     public string BootstrapServers { get; set; } = string.Empty;
     public string SecurityEventsTopic { get; set; } = "xanhnow.security.events";
     public string SecurityAuditTopic { get; set; } = "xanhnow.security.audit";
+    public string ClientId { get; set; } = "xanhnow-security-producer";
+    public string Acks { get; set; } = "all";
     public bool EnableIdempotentProducer { get; set; } = true;
+    public string SecretPath { get; set; } = string.Empty;
+    public string UsernameField { get; set; } = "username";
+    public string PasswordField { get; set; } = "password";
+    public string SecurityProtocolField { get; set; } = "security_protocol";
+    public string SaslMechanismField { get; set; } = "sasl_mechanism";
 }

@@ -3,6 +3,7 @@ using XanhNow.Security.Application.Abstractions.Time;
 using XanhNow.Security.Application.Background;
 using XanhNow.Security.Application.Background.Commands;
 using XanhNow.Security.Application.Common.Requests;
+using XanhNow.Security.Infrastructure.Integration;
 using XanhNow.Security.Infrastructure.Persistence;
 using XanhNow.Security.Worker.Jobs;
 using XanhNow.Security.Worker.Options;
@@ -25,6 +26,11 @@ public static class SecurityWorkerServiceCollectionExtensions
             options.ConnectionString = configuration.GetConnectionString("SecurityDb") ?? configuration["SecurityPersistence:ConnectionString"];
             options.EnableDetailedErrors = environment.IsDevelopment();
             options.EnableSensitiveDataLogging = false;
+        });
+
+        services.AddSecurityIntegration(options =>
+        {
+            configuration.GetSection("SecurityIntegration").Bind(options);
         });
 
         services.AddSingleton<IClock, WorkerSystemClock>();

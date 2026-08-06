@@ -54,6 +54,18 @@ public sealed class SecurityIntegrationOptionsValidator
             errors.Add("Redis LockTtl must be positive.");
         }
 
+        if (!string.Equals(options.Kafka.Mode, "InMemory", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(options.Kafka.Mode, "Kafka", StringComparison.OrdinalIgnoreCase))
+        {
+            errors.Add("Kafka Mode must be InMemory or Kafka.");
+        }
+
+        if (string.Equals(options.Kafka.Mode, "Kafka", StringComparison.OrdinalIgnoreCase) &&
+            string.IsNullOrWhiteSpace(options.Kafka.BootstrapServers))
+        {
+            errors.Add("Kafka BootstrapServers is required when Kafka Mode is Kafka.");
+        }
+
         if (string.IsNullOrWhiteSpace(options.Kafka.SecurityEventsTopic))
         {
             errors.Add("Kafka SecurityEventsTopic is required.");
