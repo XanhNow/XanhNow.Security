@@ -338,6 +338,10 @@ public sealed class CoreSliceHandlerTests
         public ValueTask<ChildCallResult<JwtIssueResult>> RefreshAsync(JwtRefreshRequest request, CancellationToken cancellationToken)
             => ValueTask.FromResult(ChildCallResult<JwtIssueResult>.Success(IssueResult));
 
+        public ValueTask<ChildCallResult<JwtValidateResult>> ValidateAsync(string accessToken, CancellationToken cancellationToken)
+            => ValueTask.FromResult(ChildCallResult<JwtValidateResult>.Success(
+                new JwtValidateResult(true, Guid.NewGuid(), Array.Empty<string>(), Array.Empty<string>(), "fake-session")));
+
         public ValueTask<ChildCallResult<bool>> RevokeSessionAsync(JwtRevokeRequest request, CancellationToken cancellationToken)
             => ValueTask.FromResult(ChildCallResult<bool>.Success(true));
 

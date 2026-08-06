@@ -11,6 +11,8 @@ service TokenProvider {
   rpc RefreshToken (RefreshTokenRequest) returns (TokenPairResponse);
   rpc ValidateToken (ValidateTokenRequest) returns (ValidateTokenResponse);
   rpc RevokeToken (RevokeTokenRequest) returns (RevokeTokenResponse);
+  rpc ListSessions (ListSessionsRequest) returns (ListSessionsResponse);
+  rpc RevokeAllSessions (RevokeAllSessionsRequest) returns (RevokeAllSessionsResponse);
 }
 
 message IssueTokenRequest {
@@ -29,6 +31,18 @@ message ValidateTokenRequest {
 
 message RevokeTokenRequest {
   string refresh_token = 1;
+  string session_id = 2;
+}
+
+message ListSessionsRequest {
+  string subject = 1;
+}
+
+message RevokeAllSessionsRequest {
+  string subject = 1;
+  string reason_code = 2;
+  bool include_current_session = 3;
+  string current_session_id = 4;
 }
 
 message TokenPairResponse {
@@ -36,6 +50,7 @@ message TokenPairResponse {
   string refresh_token = 2;
   google.protobuf.Timestamp jwt_expiry = 3;
   google.protobuf.Timestamp refresh_token_expiry = 4;
+  string session_id = 5;
 }
 
 message ValidateTokenResponse {
@@ -43,9 +58,28 @@ message ValidateTokenResponse {
   string subject = 2;
   repeated string roles = 3;
   repeated string scopes = 4;
+  string session_id = 5;
 }
 
 message RevokeTokenResponse {
   bool is_revoked = 1;
+  google.protobuf.Timestamp revoked_at = 2;
+}
+
+message SessionDescriptor {
+  string session_id = 1;
+  string subject = 2;
+  string status = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp last_seen_at = 5;
+  google.protobuf.Timestamp expires_at = 6;
+}
+
+message ListSessionsResponse {
+  repeated SessionDescriptor sessions = 1;
+}
+
+message RevokeAllSessionsResponse {
+  int32 revoked_count = 1;
   google.protobuf.Timestamp revoked_at = 2;
 }

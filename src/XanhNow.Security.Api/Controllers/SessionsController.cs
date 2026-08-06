@@ -63,7 +63,7 @@ public sealed class SessionsController : ApiControllerBase
     [EndpointMaturity("Current", "sessions.logout-all")]
     public async Task<ActionResult<ApiResponse<LogoutAllSessionsResponse>>> LogoutAllAsync(LogoutAllSessionsRequest request, CancellationToken cancellationToken)
     {
-        var result = await _logoutAll.ExecuteAsync(new LogoutAllSessionsCommand(CurrentUserIdOrEmpty(), request.ReasonCode, request.IncludeCurrentSession), cancellationToken);
+        var result = await _logoutAll.ExecuteAsync(new LogoutAllSessionsCommand(CurrentUserIdOrEmpty(), request.ReasonCode, request.IncludeCurrentSession, User.FindFirst("session_id")?.Value), cancellationToken);
         return FromApplicationResult(result, x => new LogoutAllSessionsResponse(x.RevokedCount, x.RevokedAtUtc));
     }
 

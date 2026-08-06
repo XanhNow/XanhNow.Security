@@ -362,7 +362,7 @@ public sealed class LogoutAllSessionsCommandHandler : CoreSliceHandler, IRequest
 
     public async Task<Result<LogoutAllSessionsResult>> HandleAsync(LogoutAllSessionsCommand request, CancellationToken cancellationToken)
     {
-        var child = await _jwt.RevokeAllSessionsAsync(new JwtRevokeAllRequest(request.UserId, request.ReasonCode, request.IncludeCurrentSession), cancellationToken);
+        var child = await _jwt.RevokeAllSessionsAsync(new JwtRevokeAllRequest(request.UserId, request.ReasonCode, request.IncludeCurrentSession, request.CurrentSessionId), cancellationToken);
         if (child.IsFailure || child.Value is null)
         {
             await AuditAsync(request.UserId, "session.logout_all", "failed", child.Error?.Code ?? "jwt_revoke_all_failed", cancellationToken);
