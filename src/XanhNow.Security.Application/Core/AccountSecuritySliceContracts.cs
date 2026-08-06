@@ -30,7 +30,7 @@ public sealed record ChangeAccountStateCommand(Guid UserId, AccountStateTargetSt
 public sealed record DeleteOwnAccountCommand(Guid UserId, string IdempotencyKey, string CorrelationId, string? StepUpGrant) : ICommand<DeleteOwnAccountResult>, IIdempotentRequest;
 
 public sealed record ListSessionsQuery(Guid UserId) : IQuery<IReadOnlyCollection<SessionSummaryResult>>;
-public sealed record LogoutAllSessionsCommand(Guid UserId, string ReasonCode, bool IncludeCurrentSession) : ICommand<LogoutAllSessionsResult>;
+public sealed record LogoutAllSessionsCommand(Guid UserId, string ReasonCode, bool IncludeCurrentSession, string? CurrentSessionId = null) : ICommand<LogoutAllSessionsResult>;
 
 public sealed record RenamePasskeyCommand(Guid UserId, string PasskeyId, string DisplayName) : ICommand<PasskeyStateResult>;
 public sealed record SetPasskeyEnabledCommand(Guid UserId, string PasskeyId, bool Enabled, string ReasonCode) : ICommand<PasskeyStateResult>;
