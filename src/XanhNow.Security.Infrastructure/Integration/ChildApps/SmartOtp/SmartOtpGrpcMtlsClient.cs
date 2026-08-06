@@ -34,7 +34,7 @@ internal sealed class SmartOtpGrpcMtlsClient : ISmartOtpClient, IDisposable
         {
             var response = await client.BeginBindOtpDeviceAsync(new SmartOtpGrpc.BeginBindOtpDeviceRequest
             {
-                ExternalUserId = request.UserId.ToString("D"),
+                ExternalUserId = ToExternalUserId(request.UserId),
                 DeviceName = request.DeviceName,
                 Platform = request.Platform,
                 AppInstanceIdHash = ByteString.CopyFrom(FromBase64(request.AppInstanceIdHashBase64)),
@@ -68,7 +68,7 @@ internal sealed class SmartOtpGrpcMtlsClient : ISmartOtpClient, IDisposable
             var response = await client.CompleteBindOtpDeviceAsync(new SmartOtpGrpc.CompleteBindOtpDeviceRequest
             {
                 BindingId = request.BindingId,
-                ExternalUserId = request.UserId.ToString("D"),
+                ExternalUserId = ToExternalUserId(request.UserId),
                 ClientNonce = ByteString.CopyFrom(FromBase64(request.ClientNonceBase64)),
                 DeviceSignature = ByteString.CopyFrom(FromBase64(request.DeviceSignatureBase64)),
                 Metadata = NewMetadata("smart-otp-bind-finish")
@@ -96,7 +96,7 @@ internal sealed class SmartOtpGrpcMtlsClient : ISmartOtpClient, IDisposable
         {
             var response = await client.CreateOtpChallengeAsync(new SmartOtpGrpc.CreateOtpChallengeRequest
             {
-                ExternalUserId = request.UserId.ToString("D"),
+                ExternalUserId = ToExternalUserId(request.UserId),
                 Purpose = request.Purpose,
                 PolicyCode = request.Purpose,
                 TransactionDigest = ByteString.CopyFrom(Encoding.UTF8.GetBytes(request.TransactionSummary ?? string.Empty)),
@@ -160,6 +160,27 @@ internal sealed class SmartOtpGrpcMtlsClient : ISmartOtpClient, IDisposable
         chain.ChainPolicy.CustomTrustStore.Add(ca);
         chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
         return chain.Build(serverCertificate);
+    }
+
+
+    private static string ToExternalUserId(Guid userId)
+    {
+        const string alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+        Span<byte> bytes = stackalloc byte[16];
+        userId.TryWriteBytes(bytes);
+
+        Span<char> chars = stackalloc char[26];
+        var value = new UInt128(
+            BitConverter.ToUInt64(bytes[..8]),
+            BitConverter.ToUInt64(bytes[8..]));
+
+        for (var i = 25; i >= 0; i--)
+        {
+            chars[i] = alphabet[(int)(value & 31)];
+            value >>= 5;
+        }
+
+        return new string(chars);
     }
 
     private static SmartOtpGrpc.RequestMetadata NewMetadata(string step) => new()
