@@ -1,3 +1,4 @@
+using StackExchange.Redis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using XanhNow.Security.Application.Abstractions.Caching;
@@ -45,6 +46,17 @@ public static class SecurityIntegrationServiceCollectionExtensions
         services.AddSingleton<IIdGenerator, GuidIdGenerator>();
         services.AddSingleton<IRequestFingerprint, JsonRequestFingerprint>();
         services.AddSingleton<RedisRuntimeState>();
+        services.AddSingleton(sp =>
+        {
+            var options = sp.GetRequiredService<SecurityIntegrationOptions>();
+            if (!string.Equals(options.Redis.Mode, "Redis", StringComparison.OrdinalIgnoreCase))
+            {
+                return new RedisConnectionProvider(null);
+            }
+
+            var configuration = BuildRedisConfiguration(options, sp.GetRequiredService<IVaultSecretReader>());
+            return new RedisConnectionProvider(ConnectionMultiplexer.Connect(configuration));
+        });
         services.AddSingleton<IApplicationCache, RedisApplicationCache>();
         services.AddSingleton<IRateLimitService, RedisRateLimitService>();
         services.AddSingleton<IIdempotencyStore, RedisIdempotencyStore>();
@@ -61,6 +73,33 @@ public static class SecurityIntegrationServiceCollectionExtensions
         services.AddSingleton<ISmartOtpClient>(sp => new SmartOtpGrpcMtlsClient(sp.GetRequiredService<SecurityIntegrationOptions>()));
 
         return services;
+    }
+
+
+    private static ConfigurationOptions BuildRedisConfiguration(SecurityIntegrationOptions options, IVaultSecretReader secrets)
+    {
+        var redis = options.Redis;
+        var configuration = !string.IsNullOrWhiteSpace(redis.Configuration)
+            ? ConfigurationOptions.Parse(redis.Configuration)
+            : ConfigurationOptions.Parse(redis.BootstrapEndpoints);
+
+        configuration.AbortOnConnectFail = redis.AbortOnConnectFail;
+        configuration.ConnectTimeout = redis.ConnectTimeoutMs;
+        configuration.SyncTimeout = redis.OperationTimeoutMs;
+        configuration.AsyncTimeout = redis.OperationTimeoutMs;
+        configuration.DefaultDatabase = 0;
+        configuration.Ssl = redis.TlsEnabled;
+
+        if (string.IsNullOrWhiteSpace(configuration.Password) && !string.IsNullOrWhiteSpace(redis.SecretPath))
+        {
+            var password = secrets.ReadFieldAsync(new VaultSecretReference(redis.SecretPath, redis.PasswordField), CancellationToken.None).AsTask().GetAwaiter().GetResult();
+            if (!string.IsNullOrWhiteSpace(password))
+            {
+                configuration.Password = password;
+            }
+        }
+
+        return configuration;
     }
 
     private static HttpClient CreateHttpClient(ChildAppClientOptions options)

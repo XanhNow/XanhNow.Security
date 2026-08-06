@@ -1,3 +1,4 @@
+using StackExchange.Redis;
 using XanhNow.Security.Application.Abstractions.Locking;
 using XanhNow.Security.Infrastructure.Integration.Options;
 
@@ -5,22 +6,32 @@ namespace XanhNow.Security.Infrastructure.Integration.Redis;
 
 internal sealed class RedisDistributedLockService : IDistributedLockService
 {
+    private readonly IConnectionMultiplexer? _redis;
     private readonly RedisRuntimeState _state;
     private readonly RedisIntegrationOptions _options;
 
-    public RedisDistributedLockService(RedisRuntimeState state, SecurityIntegrationOptions options)
+    public RedisDistributedLockService(RedisConnectionProvider redis, RedisRuntimeState state, SecurityIntegrationOptions options)
     {
+        _redis = redis.Connection;
         _state = state;
         _options = options.Redis;
     }
 
-    public ValueTask<IDistributedLockHandle?> TryAcquireAsync(string key, TimeSpan ttl, CancellationToken cancellationToken)
+    public async ValueTask<IDistributedLockHandle?> TryAcquireAsync(string key, TimeSpan ttl, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var safeTtl = ttl > TimeSpan.Zero ? ttl : _options.LockTtl;
         var namespacedKey = $"{_options.KeyPrefix}:lock:{key}";
-        var now = DateTimeOffset.UtcNow;
         var ownerToken = Guid.NewGuid().ToString("N");
-        var expiresAt = now.Add(ttl > TimeSpan.Zero ? ttl : _options.LockTtl);
+
+        if (_redis is not null)
+        {
+            var acquired = await _redis.GetDatabase().StringSetAsync(namespacedKey, ownerToken, safeTtl, When.NotExists);
+            return acquired ? new RedisDistributedLockHandle(_redis, namespacedKey, key, ownerToken) : null;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var expiresAt = now.Add(safeTtl);
 
         while (true)
         {
@@ -28,7 +39,7 @@ internal sealed class RedisDistributedLockService : IDistributedLockService
             {
                 if (_state.Locks.TryAdd(namespacedKey, new RedisLockRecord(ownerToken, expiresAt)))
                 {
-                    return ValueTask.FromResult<IDistributedLockHandle?>(new RedisDistributedLockHandle(_state, namespacedKey, key, ownerToken));
+                    return new InMemoryDistributedLockHandle(_state, namespacedKey, key, ownerToken);
                 }
 
                 continue;
@@ -38,22 +49,49 @@ internal sealed class RedisDistributedLockService : IDistributedLockService
             {
                 if (_state.Locks.TryUpdate(namespacedKey, new RedisLockRecord(ownerToken, expiresAt), current))
                 {
-                    return ValueTask.FromResult<IDistributedLockHandle?>(new RedisDistributedLockHandle(_state, namespacedKey, key, ownerToken));
+                    return new InMemoryDistributedLockHandle(_state, namespacedKey, key, ownerToken);
                 }
 
                 continue;
             }
 
-            return ValueTask.FromResult<IDistributedLockHandle?>(null);
+            return null;
         }
     }
 
     private sealed class RedisDistributedLockHandle : IDistributedLockHandle
     {
+        private readonly IConnectionMultiplexer _redis;
+        private readonly string _namespacedKey;
+
+        public RedisDistributedLockHandle(IConnectionMultiplexer redis, string namespacedKey, string key, string ownerToken)
+        {
+            _redis = redis;
+            _namespacedKey = namespacedKey;
+            Key = key;
+            OwnerToken = ownerToken;
+        }
+
+        public string Key { get; }
+        public string OwnerToken { get; }
+
+        public async ValueTask DisposeAsync()
+        {
+            var db = _redis.GetDatabase();
+            var current = await db.StringGetAsync(_namespacedKey);
+            if (current.HasValue && string.Equals(current!, OwnerToken, StringComparison.Ordinal))
+            {
+                await db.KeyDeleteAsync(_namespacedKey);
+            }
+        }
+    }
+
+    private sealed class InMemoryDistributedLockHandle : IDistributedLockHandle
+    {
         private readonly RedisRuntimeState _state;
         private readonly string _namespacedKey;
 
-        public RedisDistributedLockHandle(RedisRuntimeState state, string namespacedKey, string key, string ownerToken)
+        public InMemoryDistributedLockHandle(RedisRuntimeState state, string namespacedKey, string key, string ownerToken)
         {
             _state = state;
             _namespacedKey = namespacedKey;
