@@ -10,6 +10,7 @@ using XanhNow.Security.Application.Abstractions.Time;
 using XanhNow.Security.Application.Common.ChildApps;
 using XanhNow.Security.Application.Common.Requests;
 using XanhNow.Security.Application.Common.Results;
+using XanhNow.Security.Domain.Profiles;
 using XanhNow.Security.Domain.Users;
 
 namespace XanhNow.Security.Application.Core;
@@ -295,20 +296,44 @@ public sealed class BeginSmartOtpEnrollmentCommandHandler : IRequestHandler<Begi
 public sealed class ConfirmSmartOtpEnrollmentCommandHandler : IRequestHandler<ConfirmSmartOtpEnrollmentCommand, SmartOtpDeviceStateResult>
 {
     private readonly ISmartOtpClient _smartOtp;
+    private readonly ISecurityProfileWriter _profiles;
+    private readonly ILocalUnitOfWork _unitOfWork;
     private readonly IClock _clock;
 
-    public ConfirmSmartOtpEnrollmentCommandHandler(ISmartOtpClient smartOtp, IClock clock)
+    public ConfirmSmartOtpEnrollmentCommandHandler(ISmartOtpClient smartOtp, ISecurityProfileWriter profiles, ILocalUnitOfWork unitOfWork, IClock clock)
     {
         _smartOtp = smartOtp;
+        _profiles = profiles;
+        _unitOfWork = unitOfWork;
         _clock = clock;
     }
 
     public async Task<Result<SmartOtpDeviceStateResult>> HandleAsync(ConfirmSmartOtpEnrollmentCommand request, CancellationToken cancellationToken)
     {
         var child = await _smartOtp.FinishBindAsync(new SmartOtpBindFinishRequest(request.UserId, request.EnrollmentId, request.ClientNonce, request.DeviceSignature), cancellationToken);
-        return child.IsSuccess && child.Value is not null
-            ? Result<SmartOtpDeviceStateResult>.Success(new SmartOtpDeviceStateResult(child.Value.DeviceId, child.Value.DeviceKeyId, child.Value.Status, string.Equals(child.Value.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase), child.Value.BoundAtUtc))
-            : CoreSliceHandler.ChildFailure<SmartOtpDeviceStateResult>(child.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Smart OTP confirm bind failed.", true));
+        if (child.IsFailure || child.Value is null)
+        {
+            return CoreSliceHandler.ChildFailure<SmartOtpDeviceStateResult>(child.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Smart OTP confirm bind failed.", true));
+        }
+
+        var isActive = string.Equals(child.Value.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase);
+        if (isActive)
+        {
+            var profile = await _profiles.FindByUserIdAsync(request.UserId, cancellationToken);
+            if (profile is null)
+            {
+                profile = SecurityProfile.Create(request.UserId, 0, 1, true, _clock.UtcNow);
+                await _profiles.AddAsync(profile, cancellationToken);
+            }
+            else
+            {
+                profile.ApplySnapshot(profile.PasskeyCount, Math.Max(profile.SmartOtpDeviceCount, 1), profile.PasswordLoginEnabled, _clock.UtcNow);
+            }
+
+            await _unitOfWork.CommitAsync(cancellationToken);
+        }
+
+        return Result<SmartOtpDeviceStateResult>.Success(new SmartOtpDeviceStateResult(child.Value.DeviceId, child.Value.DeviceKeyId, child.Value.Status, isActive, child.Value.BoundAtUtc));
     }
 }
 

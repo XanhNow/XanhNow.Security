@@ -45,6 +45,7 @@ public static class SecurityPersistenceServiceCollectionExtensions
         services.AddScoped<ISecurityRecoveryCaseRepository, SecurityRecoveryCaseRepository>();
         services.AddScoped<ISecurityOperationRepository, SecurityOperationRepository>();
         services.AddScoped<ISecurityProfileReader, SecurityProfileReader>();
+        services.AddScoped<ISecurityProfileWriter, SecurityProfileRepository>();
         services.AddScoped<ISecuritySessionReader, SecuritySessionReader>();
         services.AddScoped<ISecurityPolicyDecisionWriter, SecurityPolicyDecisionWriter>();
         services.AddScoped<ISecurityAuditLogWriter, SecurityAuditLogWriter>();

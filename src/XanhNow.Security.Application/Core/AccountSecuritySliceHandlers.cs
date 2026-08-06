@@ -24,8 +24,8 @@ internal static class AccountSecuritySliceMapper
     public static AccountStateResult ToAccountState(AuthLoginAccountStateChangeResult state)
         => new(state.UserId, state.Status, state.ChangedAtUtc);
 
-    public static SecurityProfileResult ToSecurityProfile(AuthLoginAccountStatusResult status, bool hasPasskey)
-        => new(status.UserId, status.MaskedPhoneNumber, status.Status, "Unknown", hasPasskey, false, false, status.UpdatedAtUtc);
+    public static SecurityProfileResult ToSecurityProfile(AuthLoginAccountStatusResult status, bool hasPasskey, bool hasSmartOtp, bool isStale)
+        => new(status.UserId, status.MaskedPhoneNumber, status.Status, "Unknown", hasPasskey, hasSmartOtp, isStale, status.UpdatedAtUtc);
 
     public static SessionSummaryResult ToSession(JwtSessionDescriptor session)
         => new(session.SessionId, session.UserId, session.Status, session.DeviceName, session.Platform, session.CreatedAtUtc, session.LastSeenAtUtc, session.ExpiresAtUtc);
@@ -182,11 +182,13 @@ public sealed class GetSecurityProfileQueryHandler : IRequestHandler<GetSecurity
 {
     private readonly IAuthLoginClient _authLogin;
     private readonly IPasskeyClient _passkey;
+    private readonly ISecurityProfileReader _profiles;
 
-    public GetSecurityProfileQueryHandler(IAuthLoginClient authLogin, IPasskeyClient passkey)
+    public GetSecurityProfileQueryHandler(IAuthLoginClient authLogin, IPasskeyClient passkey, ISecurityProfileReader profiles)
     {
         _authLogin = authLogin;
         _passkey = passkey;
+        _profiles = profiles;
     }
 
     public async Task<Result<SecurityProfileResult>> HandleAsync(GetSecurityProfileQuery request, CancellationToken cancellationToken)
@@ -198,8 +200,10 @@ public sealed class GetSecurityProfileQueryHandler : IRequestHandler<GetSecurity
         }
 
         var passkeys = await _passkey.ListAsync(request.UserId, cancellationToken);
+        var profile = await _profiles.FindByUserIdAsync(request.UserId, cancellationToken);
         var hasPasskey = passkeys.IsSuccess && passkeys.Value?.Any(x => !x.Revoked) == true;
-        return Result<SecurityProfileResult>.Success(AccountSecuritySliceMapper.ToSecurityProfile(status.Value, hasPasskey));
+        var hasSmartOtp = profile?.SmartOtpDeviceCount > 0;
+        return Result<SecurityProfileResult>.Success(AccountSecuritySliceMapper.ToSecurityProfile(status.Value, hasPasskey, hasSmartOtp, profile?.IsStale == true));
     }
 }
 

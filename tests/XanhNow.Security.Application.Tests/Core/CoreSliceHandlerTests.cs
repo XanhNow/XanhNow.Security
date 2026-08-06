@@ -9,6 +9,7 @@ using XanhNow.Security.Application.Abstractions.Outbox;
 using XanhNow.Security.Application.Abstractions.Persistence;
 using XanhNow.Security.Application.Abstractions.Time;
 using XanhNow.Security.Application.Core;
+using XanhNow.Security.Domain.Profiles;
 using XanhNow.Security.Domain.Users;
 
 namespace XanhNow.Security.Application.Tests.Core;
@@ -92,10 +93,12 @@ public sealed class CoreSliceHandlerTests
             CreateChallengeResult = new SmartOtpChallengeResult("challenge-1", Now.AddMinutes(5)),
             VerifyResult = new SmartOtpVerifyResult(userId, "totp")
         };
+        var profiles = new FakeSecurityProfileStore();
+        var unitOfWork = new FakeUnitOfWork();
 
         var begin = await new BeginSmartOtpEnrollmentCommandHandler(smartOtp, new FixedClock())
             .HandleAsync(new BeginSmartOtpEnrollmentCommand(userId, "Phone", "ANDROID", "app-hash", "ECDSA_P256_SHA256", "public-key", "thumbprint"), CancellationToken.None);
-        var confirm = await new ConfirmSmartOtpEnrollmentCommandHandler(smartOtp, new FixedClock())
+        var confirm = await new ConfirmSmartOtpEnrollmentCommandHandler(smartOtp, profiles, unitOfWork, new FixedClock())
             .HandleAsync(new ConfirmSmartOtpEnrollmentCommand(userId, "bind-1", "nonce", "signature"), CancellationToken.None);
         var challenge = await new StartStepUpCommandHandler(smartOtp)
             .HandleAsync(new StartStepUpCommand(userId, "transaction", "digest", Now.AddMinutes(5)), CancellationToken.None);
@@ -105,6 +108,8 @@ public sealed class CoreSliceHandlerTests
         Assert.True(begin.IsSuccess);
         Assert.Equal("challenge-base64", begin.Value!.ServerChallenge);
         Assert.True(confirm.Value!.IsEnabled);
+        Assert.Equal(1, unitOfWork.CommitCount);
+        Assert.True((await profiles.FindByUserIdAsync(userId, CancellationToken.None))?.SmartOtpDeviceCount > 0);
         Assert.Equal("challenge-1", challenge.Value!.ChallengeId);
         Assert.StartsWith("step-up:", grant.Value!.StepUpGrant, StringComparison.Ordinal);
     }
@@ -127,12 +132,14 @@ public sealed class CoreSliceHandlerTests
             ListResult = [new PasskeyDescriptor("credential-1", "Phone passkey", false)]
         };
         var audit = new FakeAuditIntentWriter();
+        var profiles = new FakeSecurityProfileStore();
+        await profiles.AddAsync(SecurityProfile.Create(userId, 0, 1, true, Now), CancellationToken.None);
 
         var password = await new ChangePasswordCommandHandler(authLogin, audit, new FixedClock())
             .HandleAsync(new ChangePasswordCommand(userId, "old-password", "new-password", "user_requested"), CancellationToken.None);
         var phone = await new StartPhoneChangeCommandHandler(authLogin, audit, new FixedClock())
             .HandleAsync(new StartPhoneChangeCommand(userId, "0911111111", "step-up-grant", "phone_change"), CancellationToken.None);
-        var profile = await new GetSecurityProfileQueryHandler(authLogin, passkey)
+        var profile = await new GetSecurityProfileQueryHandler(authLogin, passkey, profiles)
             .HandleAsync(new GetSecurityProfileQuery(userId), CancellationToken.None);
         var sessions = await new ListSessionsQueryHandler(jwt)
             .HandleAsync(new ListSessionsQuery(userId), CancellationToken.None);
@@ -147,6 +154,7 @@ public sealed class CoreSliceHandlerTests
         Assert.Equal("password.change", password.Value!.OperationType);
         Assert.True(phone.IsSuccess);
         Assert.True(profile.Value!.HasPasskey);
+        Assert.True(profile.Value.HasSmartOtp);
         Assert.Single(sessions.Value!);
         Assert.Equal(2, logoutAll.Value!.RevokedCount);
         Assert.True(rename.IsSuccess);
@@ -227,6 +235,20 @@ public sealed class CoreSliceHandlerTests
         public ValueTask AddAsync(SecurityUser user, CancellationToken cancellationToken)
         {
             _users[user.Id] = user;
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class FakeSecurityProfileStore : ISecurityProfileReader, ISecurityProfileWriter
+    {
+        private readonly Dictionary<Guid, SecurityProfile> _profiles = [];
+
+        public ValueTask<SecurityProfile?> FindByUserIdAsync(Guid userId, CancellationToken cancellationToken)
+            => ValueTask.FromResult(_profiles.GetValueOrDefault(userId));
+
+        public ValueTask AddAsync(SecurityProfile profile, CancellationToken cancellationToken)
+        {
+            _profiles[profile.Id] = profile;
             return ValueTask.CompletedTask;
         }
     }
