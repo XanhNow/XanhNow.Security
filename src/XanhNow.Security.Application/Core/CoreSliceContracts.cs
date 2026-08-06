@@ -28,10 +28,10 @@ public sealed record BeginPasskeyLoginCommand(string? LoginIdentifier, DeviceCon
 public sealed record BeginPasskeyLoginResult(string CeremonyId, JsonElement PublicKeyOptions, DateTimeOffset ExpiresAtUtc);
 public sealed record FinishPasskeyLoginCommand(string CeremonyId, JsonElement Credential, DeviceContext? DeviceContext) : ICommand<PasswordLoginResult>;
 
-public sealed record BeginSmartOtpEnrollmentCommand(Guid UserId, string DeviceName) : ICommand<BeginSmartOtpEnrollmentResult>;
-public sealed record BeginSmartOtpEnrollmentResult(string EnrollmentId, string ProvisioningUri, string ManualEntryKey, DateTimeOffset ExpiresAtUtc);
-public sealed record ConfirmSmartOtpEnrollmentCommand(string EnrollmentId, string Otp) : ICommand<SmartOtpDeviceStateResult>;
-public sealed record SmartOtpDeviceStateResult(string DeviceId, bool IsEnabled, DateTimeOffset UpdatedAtUtc);
+public sealed record BeginSmartOtpEnrollmentCommand(Guid UserId, string DeviceName, string Platform, string AppInstanceIdHash, string KeyAlgorithm, string CandidatePublicKeySpki, string CandidatePublicKeyThumbprint) : ICommand<BeginSmartOtpEnrollmentResult>;
+public sealed record BeginSmartOtpEnrollmentResult(string EnrollmentId, string ServerChallenge, int ChallengeFormatVersion, DateTimeOffset ExpiresAtUtc, string Status);
+public sealed record ConfirmSmartOtpEnrollmentCommand(Guid UserId, string EnrollmentId, string ClientNonce, string DeviceSignature) : ICommand<SmartOtpDeviceStateResult>;
+public sealed record SmartOtpDeviceStateResult(string DeviceId, string DeviceKeyId, string Status, bool IsEnabled, DateTimeOffset UpdatedAtUtc);
 public sealed record StartStepUpCommand(Guid UserId, string Purpose, string TransactionDigest, DateTimeOffset ExpiresAtUtc) : ICommand<StepUpChallengeResult>;
 public sealed record StepUpChallengeResult(string ChallengeId, string Purpose, DateTimeOffset ExpiresAtUtc);
 public sealed record VerifyStepUpCommand(string ChallengeId, string Otp) : ICommand<StepUpGrantResult>;

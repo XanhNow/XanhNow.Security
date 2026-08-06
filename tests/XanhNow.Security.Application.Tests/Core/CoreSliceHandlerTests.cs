@@ -88,22 +88,22 @@ public sealed class CoreSliceHandlerTests
         var userId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
         var smartOtp = new FakeSmartOtpClient
         {
-            BeginBindResult = new SmartOtpBindBeginResult("bind-1", "otpauth://totp/xanhnow"),
+            BeginBindResult = new SmartOtpBindBeginResult("bind-1", "challenge-base64", 1, Now.AddMinutes(5), "PENDING"),
             CreateChallengeResult = new SmartOtpChallengeResult("challenge-1", Now.AddMinutes(5)),
             VerifyResult = new SmartOtpVerifyResult(userId, "totp")
         };
 
         var begin = await new BeginSmartOtpEnrollmentCommandHandler(smartOtp, new FixedClock())
-            .HandleAsync(new BeginSmartOtpEnrollmentCommand(userId, "Phone"), CancellationToken.None);
+            .HandleAsync(new BeginSmartOtpEnrollmentCommand(userId, "Phone", "ANDROID", "app-hash", "ECDSA_P256_SHA256", "public-key", "thumbprint"), CancellationToken.None);
         var confirm = await new ConfirmSmartOtpEnrollmentCommandHandler(smartOtp, new FixedClock())
-            .HandleAsync(new ConfirmSmartOtpEnrollmentCommand("bind-1", "123456"), CancellationToken.None);
+            .HandleAsync(new ConfirmSmartOtpEnrollmentCommand(userId, "bind-1", "nonce", "signature"), CancellationToken.None);
         var challenge = await new StartStepUpCommandHandler(smartOtp)
             .HandleAsync(new StartStepUpCommand(userId, "transaction", "digest", Now.AddMinutes(5)), CancellationToken.None);
         var grant = await new VerifyStepUpCommandHandler(smartOtp, new FixedClock())
             .HandleAsync(new VerifyStepUpCommand("challenge-1", "123456"), CancellationToken.None);
 
         Assert.True(begin.IsSuccess);
-        Assert.Equal("[REDACTED]", begin.Value!.ManualEntryKey);
+        Assert.Equal("challenge-base64", begin.Value!.ServerChallenge);
         Assert.True(confirm.Value!.IsEnabled);
         Assert.Equal("challenge-1", challenge.Value!.ChallengeId);
         Assert.StartsWith("step-up:", grant.Value!.StepUpGrant, StringComparison.Ordinal);
@@ -379,7 +379,7 @@ public sealed class CoreSliceHandlerTests
 
     private sealed class FakeSmartOtpClient : ISmartOtpClient
     {
-        public SmartOtpBindBeginResult BeginBindResult { get; init; } = new("bind", "otpauth://totp/xanhnow");
+        public SmartOtpBindBeginResult BeginBindResult { get; init; } = new("bind", "challenge-base64", 1, Now.AddMinutes(5), "PENDING");
         public SmartOtpChallengeResult CreateChallengeResult { get; init; } = new("challenge", Now.AddMinutes(5));
         public SmartOtpVerifyResult VerifyResult { get; init; } = new(Guid.NewGuid(), "totp");
         public SmartOtpRevokeAllDevicesResult RevokeAllDevicesResult { get; init; } = new(0, Now);
@@ -388,8 +388,8 @@ public sealed class CoreSliceHandlerTests
         public ValueTask<ChildCallResult<SmartOtpBindBeginResult>> BeginBindAsync(SmartOtpBindBeginRequest request, CancellationToken cancellationToken)
             => ValueTask.FromResult(ChildCallResult<SmartOtpBindBeginResult>.Success(BeginBindResult));
 
-        public ValueTask<ChildCallResult<bool>> FinishBindAsync(SmartOtpBindFinishRequest request, CancellationToken cancellationToken)
-            => ValueTask.FromResult(ChildCallResult<bool>.Success(true));
+        public ValueTask<ChildCallResult<SmartOtpBindFinishResult>> FinishBindAsync(SmartOtpBindFinishRequest request, CancellationToken cancellationToken)
+            => ValueTask.FromResult(ChildCallResult<SmartOtpBindFinishResult>.Success(new SmartOtpBindFinishResult("device-1", "device-key-1", "ACTIVE", Now)));
 
         public ValueTask<ChildCallResult<SmartOtpChallengeResult>> CreateChallengeAsync(SmartOtpChallengeRequest request, CancellationToken cancellationToken)
             => ValueTask.FromResult(ChildCallResult<SmartOtpChallengeResult>.Success(CreateChallengeResult));

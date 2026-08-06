@@ -80,9 +80,22 @@ public sealed class SecurityIntegrationOptionsValidator
             errors.Add($"Child app {child.Name} Deadline must be positive.");
         }
 
-        if (child.RequiresMtls && string.IsNullOrWhiteSpace(child.TrustedCaPath))
+        if (child.RequiresMtls)
         {
-            errors.Add($"Child app {child.Name} requires TrustedCaPath when mTLS is enabled.");
+            if (string.IsNullOrWhiteSpace(child.TrustedCaPath))
+            {
+                errors.Add($"Child app {child.Name} requires TrustedCaPath when mTLS is enabled.");
+            }
+
+            if (string.IsNullOrWhiteSpace(child.ClientCertificatePath))
+            {
+                errors.Add($"Child app {child.Name} requires ClientCertificatePath when mTLS is enabled.");
+            }
+
+            if (string.IsNullOrWhiteSpace(child.ClientCertificateKeyPath))
+            {
+                errors.Add($"Child app {child.Name} requires ClientCertificateKeyPath when mTLS is enabled.");
+            }
         }
     }
 }
