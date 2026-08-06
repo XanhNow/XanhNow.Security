@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using XanhNow.Security.Application.Abstractions.Outbox;
 using XanhNow.Security.Application.Abstractions.Time;
 using XanhNow.Security.Application.Background;
 using XanhNow.Security.Application.Background.Commands;
@@ -18,6 +19,7 @@ public sealed class ApplicationBackedWorkerJobTests
         var services = new ServiceCollection();
         services.AddLogging(builder => builder.AddDebug());
         services.AddSingleton<IClock>(new FixedClock(new DateTimeOffset(2026, 7, 20, 1, 0, 0, TimeSpan.Zero)));
+        services.AddScoped<ISecurityOutboxDispatcher, FakeOutboxDispatcher>();
         services.AddScoped<IRequestHandler<RunBackgroundJobCommand, BackgroundCommandResult>, RunBackgroundJobCommandHandler>();
         services.AddScoped<ApplicationExecutor<RunBackgroundJobCommand, BackgroundCommandResult>>();
         var provider = services.BuildServiceProvider();
@@ -34,6 +36,14 @@ public sealed class ApplicationBackedWorkerJobTests
         var snapshot = Assert.Single(health.Snapshot());
         Assert.Equal(WorkerJobNames.OutboxDispatcher, snapshot.JobName);
         Assert.Null(snapshot.LastErrorCode);
+    }
+
+    private sealed class FakeOutboxDispatcher : ISecurityOutboxDispatcher
+    {
+        public ValueTask<OutboxDispatchResult> DispatchAsync(int batchSize, CancellationToken cancellationToken)
+        {
+            return ValueTask.FromResult(new OutboxDispatchResult(0, 0, 0, 0, 0, 0));
+        }
     }
 
     private sealed class FixedClock : IClock

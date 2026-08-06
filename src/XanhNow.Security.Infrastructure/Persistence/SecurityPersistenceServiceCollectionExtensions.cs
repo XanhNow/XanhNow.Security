@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using XanhNow.Security.Application.Abstractions.Audit;
 using XanhNow.Security.Application.Abstractions.Outbox;
 using XanhNow.Security.Application.Abstractions.Persistence;
+using XanhNow.Security.Infrastructure.Persistence.Outbox;
 using XanhNow.Security.Infrastructure.Persistence.Repositories;
 using XanhNow.Security.Infrastructure.Persistence.Transactions;
 using XanhNow.Security.Infrastructure.Persistence.Writers;
@@ -51,6 +52,7 @@ public static class SecurityPersistenceServiceCollectionExtensions
         services.AddScoped<ISecurityAuditLogWriter, SecurityAuditLogWriter>();
         services.AddScoped<IAuditIntentWriter, AuditIntentWriter>();
         services.AddScoped<IOutboxIntentWriter, OutboxIntentWriter>();
+        services.AddScoped<ISecurityOutboxDispatcher, SecurityOutboxDispatcher>();
         services.AddScoped<ILocalUnitOfWork, LocalUnitOfWork>();
         return services;
     }

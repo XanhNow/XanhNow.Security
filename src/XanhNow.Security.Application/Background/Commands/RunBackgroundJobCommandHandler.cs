@@ -1,3 +1,4 @@
+using XanhNow.Security.Application.Abstractions.Outbox;
 using XanhNow.Security.Application.Abstractions.Time;
 using XanhNow.Security.Application.Common.Requests;
 using XanhNow.Security.Application.Common.Results;
@@ -22,10 +23,12 @@ public sealed class RunBackgroundJobCommandHandler : IRequestHandler<RunBackgrou
     };
 
     private readonly IClock _clock;
+    private readonly ISecurityOutboxDispatcher _outboxDispatcher;
 
-    public RunBackgroundJobCommandHandler(IClock clock)
+    public RunBackgroundJobCommandHandler(IClock clock, ISecurityOutboxDispatcher outboxDispatcher)
     {
         _clock = clock;
+        _outboxDispatcher = outboxDispatcher;
     }
 
     public Task<Result<BackgroundCommandResult>> HandleAsync(RunBackgroundJobCommand request, CancellationToken cancellationToken)
@@ -46,7 +49,33 @@ public sealed class RunBackgroundJobCommandHandler : IRequestHandler<RunBackgrou
                 $"Worker job '{request.JobName}' is not registered.")));
         }
 
+        if (string.Equals(request.JobName, "outbox-dispatcher", StringComparison.Ordinal))
+        {
+            return DispatchOutboxAsync(request.BatchSize, cancellationToken);
+        }
+
         var result = BackgroundCommandResult.NoWork(request.JobName, _clock.UtcNow);
         return Task.FromResult(Result<BackgroundCommandResult>.Success(result));
+    }
+
+    private async Task<Result<BackgroundCommandResult>> DispatchOutboxAsync(int batchSize, CancellationToken cancellationToken)
+    {
+        var dispatch = await _outboxDispatcher.DispatchAsync(batchSize, cancellationToken);
+        var outcome = dispatch.Processed == 0
+            ? "no_work"
+            : dispatch.Failed == 0 ? "published" : "partial_failure";
+
+        var result = new BackgroundCommandResult(
+            "outbox-dispatcher",
+            dispatch.Selected,
+            dispatch.Processed,
+            dispatch.Succeeded,
+            dispatch.Failed,
+            dispatch.Retried,
+            dispatch.DeadLettered,
+            outcome,
+            _clock.UtcNow);
+
+        return Result<BackgroundCommandResult>.Success(result);
     }
 }
