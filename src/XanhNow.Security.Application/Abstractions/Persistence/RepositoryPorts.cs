@@ -46,6 +46,12 @@ public interface ISecurityProfileReader
     ValueTask<SecurityProfile?> FindByUserIdAsync(Guid userId, CancellationToken cancellationToken);
 }
 
+public interface ISecurityProfileWriter
+{
+    ValueTask<SecurityProfile?> FindByUserIdAsync(Guid userId, CancellationToken cancellationToken);
+    ValueTask AddAsync(SecurityProfile profile, CancellationToken cancellationToken);
+}
+
 public interface ISecuritySessionReader
 {
     ValueTask<PageResult<SecuritySession>> ListActiveByUserIdAsync(Guid userId, PageRequest page, CancellationToken cancellationToken);
