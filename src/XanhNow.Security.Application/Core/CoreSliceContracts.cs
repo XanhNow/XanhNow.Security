@@ -6,7 +6,7 @@ namespace XanhNow.Security.Application.Core;
 public sealed record DeviceContext(string? DeviceId, string? DeviceName, string? Platform, string? IpAddress, string? UserAgent);
 
 public sealed record RegisterCommand(string PhoneNumber, string Password, DeviceContext? DeviceContext) : ICommand<RegisterResult>;
-public sealed record RegisterResult(Guid UserId, string Status, DateTimeOffset RegisteredAtUtc);
+public sealed record RegisterResult(Guid UserId, string Status, string RegistrationStatus, DateTimeOffset RegisteredAtUtc);
 
 public sealed record PasswordLoginCommand(string PhoneNumber, string Password, DeviceContext? DeviceContext) : ICommand<PasswordLoginResult>;
 public sealed record PasswordLoginResult(string State, Guid? UserId, TokenPairResult? Tokens, MfaChallengeResult? Mfa, string? ReasonCode);
@@ -27,6 +27,10 @@ public sealed record RevokePasskeyCommand(Guid UserId, string PasskeyId, string 
 public sealed record BeginPasskeyLoginCommand(string? LoginIdentifier, DeviceContext? DeviceContext) : ICommand<BeginPasskeyLoginResult>;
 public sealed record BeginPasskeyLoginResult(string CeremonyId, JsonElement PublicKeyOptions, DateTimeOffset ExpiresAtUtc);
 public sealed record FinishPasskeyLoginCommand(string CeremonyId, JsonElement Credential, DeviceContext? DeviceContext) : ICommand<PasswordLoginResult>;
+public sealed record BeginRegistrationPasskeyCommand(Guid UserId, string DisplayName, DeviceContext? DeviceContext) : ICommand<BeginRegistrationPasskeyResult>;
+public sealed record BeginRegistrationPasskeyResult(Guid UserId, string CeremonyId, JsonElement PublicKeyOptions, DateTimeOffset ExpiresAtUtc);
+public sealed record FinishRegistrationPasskeyCommand(Guid UserId, string CeremonyId, JsonElement Credential, DeviceContext? DeviceContext) : ICommand<FinishRegistrationPasskeyResult>;
+public sealed record FinishRegistrationPasskeyResult(Guid UserId, string RegistrationStatus, DateTimeOffset CompletedAtUtc);
 
 public sealed record BeginSmartOtpEnrollmentCommand(Guid UserId, string DeviceName, string Platform, string AppInstanceIdHash, string KeyAlgorithm, string CandidatePublicKeySpki, string CandidatePublicKeyThumbprint) : ICommand<BeginSmartOtpEnrollmentResult>;
 public sealed record BeginSmartOtpEnrollmentResult(string EnrollmentId, string ServerChallenge, int ChallengeFormatVersion, DateTimeOffset ExpiresAtUtc, string Status);
