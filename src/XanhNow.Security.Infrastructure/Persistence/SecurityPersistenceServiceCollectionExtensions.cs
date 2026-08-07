@@ -27,6 +27,7 @@ public static class SecurityPersistenceServiceCollectionExtensions
             options.UseNpgsql(persistence.ConnectionString, npgsql =>
             {
                 npgsql.MigrationsHistoryTable(SecurityDatabaseConstants.MigrationHistoryTable, SecurityDatabaseConstants.Schema);
+                npgsql.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), errorCodesToAdd: null);
             });
 
             if (persistence.EnableDetailedErrors)
