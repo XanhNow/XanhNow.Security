@@ -58,10 +58,11 @@ public sealed class ApiFoundationTests : IClassFixture<WebApplicationFactory<Pro
 
         Assert.Contains(ApiRoutes.Health.Live, json, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(ApiRoutes.Auth.Register, json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(ApiRoutes.Auth.RegisterPasskeyBegin, json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(ApiRoutes.Auth.RegisterPasskeyFinish, json, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(ApiRoutes.Auth.PasswordLogin, json, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(ApiRoutes.Sessions.Refresh, json, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(ApiRoutes.Passkeys.RegistrationBegin, json, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(ApiRoutes.SmartOtp.EnrollBegin, json, StringComparison.OrdinalIgnoreCase);
     }
 }
-

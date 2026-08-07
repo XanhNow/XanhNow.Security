@@ -100,6 +100,54 @@ public sealed class CoreSliceHandlerTests
     }
 
     [Fact]
+    public async Task Registration_flow_requires_passkey_before_password_login_can_issue_tokens()
+    {
+        var userId = Guid.Parse("acacacac-acac-acac-acac-acacacacacac");
+        var authLogin = new FakeAuthLoginClient
+        {
+            RegisterResult = new AuthLoginRegisterResult(userId),
+            PasswordResult = new AuthLoginPasswordResult(userId, "pwd")
+        };
+        var jwt = new FakeJwtTokenClient { IssueResult = new JwtIssueResult("access", "refresh-ref", Now.AddMinutes(15)) };
+        var passkey = new FakePasskeyClient
+        {
+            BeginResult = new PasskeyBeginResult("ceremony-1", """{"challenge":"abc"}"""),
+            FinishResult = new PasskeyFinishResult(userId, "credential-1", "passkey")
+        };
+        var users = new FakeSecurityUserRepository();
+        var profiles = new FakeSecurityProfileStore();
+        var unitOfWork = new FakeUnitOfWork();
+        var audit = new FakeAuditIntentWriter();
+        var deviceContext = new DeviceContext("device-1", "Phone", "Android", null, null);
+
+        var register = await new RegisterCommandHandler(authLogin, users, unitOfWork, audit, new FixedClock())
+            .HandleAsync(new RegisterCommand("0900000001", "P@ssw0rd!", deviceContext), CancellationToken.None);
+        var blockedLogin = await new PasswordLoginCommandHandler(authLogin, jwt, users, unitOfWork, audit, new FixedClock())
+            .HandleAsync(new PasswordLoginCommand("0900000001", "P@ssw0rd!", deviceContext), CancellationToken.None);
+        var begin = await new BeginRegistrationPasskeyCommandHandler(passkey, users, new FixedClock())
+            .HandleAsync(new BeginRegistrationPasskeyCommand(userId, "Phone passkey", deviceContext), CancellationToken.None);
+        var finish = await new FinishRegistrationPasskeyCommandHandler(passkey, users, profiles, unitOfWork, new FixedClock())
+            .HandleAsync(new FinishRegistrationPasskeyCommand(userId, "ceremony-1", System.Text.Json.JsonDocument.Parse("""{"id":"credential-1"}""").RootElement.Clone(), deviceContext), CancellationToken.None);
+        var completedLogin = await new PasswordLoginCommandHandler(authLogin, jwt, users, unitOfWork, audit, new FixedClock())
+            .HandleAsync(new PasswordLoginCommand("0900000001", "P@ssw0rd!", deviceContext), CancellationToken.None);
+
+        Assert.True(register.IsSuccess);
+        Assert.Equal(UserRegistrationStatus.PendingPasskey.ToString(), register.Value!.RegistrationStatus);
+        Assert.True(blockedLogin.IsSuccess);
+        Assert.Equal("PasskeyRequired", blockedLogin.Value!.State);
+        Assert.Null(blockedLogin.Value.Tokens);
+        Assert.True(begin.IsSuccess);
+        Assert.Equal("device-1", passkey.LastBeginRequest?.Device?.DeviceId);
+        Assert.True(finish.IsSuccess);
+        Assert.Equal(UserRegistrationStatus.Completed.ToString(), finish.Value!.RegistrationStatus);
+        Assert.True(completedLogin.IsSuccess);
+        Assert.Equal("Completed", completedLogin.Value!.State);
+        Assert.Equal("access", completedLogin.Value.Tokens?.AccessToken);
+        Assert.True((await users.FindByIdAsync(userId, CancellationToken.None))!.IsRegistrationCompleted);
+        Assert.Equal(2, unitOfWork.CommitCount);
+    }
+
+    [Fact]
     public async Task Passkey_slices_delegate_to_passkey_child_app()
     {
         var userId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
@@ -152,6 +200,42 @@ public sealed class CoreSliceHandlerTests
         Assert.True(result.IsFailure);
         Assert.Equal(SecurityErrorCodes.ValidationFailed, result.Error?.Code);
         Assert.Null(passkey.LastFinishRequest);
+    }
+
+    [Fact]
+    public async Task Registration_passkey_begin_requires_device_id_before_calling_child_app()
+    {
+        var userId = Guid.Parse("dededede-dede-dede-dede-dededededede");
+        var passkey = new FakePasskeyClient();
+        var users = new FakeSecurityUserRepository();
+        await users.AddAsync(SecurityUser.CreatePendingPasskey(userId, Now), CancellationToken.None);
+        var handler = new BeginRegistrationPasskeyCommandHandler(passkey, users, new FixedClock());
+
+        var result = await handler.HandleAsync(new BeginRegistrationPasskeyCommand(
+            userId,
+            "Phone passkey",
+            new DeviceContext(null, "Phone", "Android", null, null)), CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(SecurityErrorCodes.ValidationFailed, result.Error?.Code);
+        Assert.Null(passkey.LastBeginRequest);
+    }
+
+    [Fact]
+    public async Task Passkey_management_begin_requires_device_id_before_calling_child_app()
+    {
+        var userId = Guid.Parse("efefefef-efef-efef-efef-efefefefefef");
+        var passkey = new FakePasskeyClient();
+        var handler = new BeginPasskeyRegistrationCommandHandler(passkey, new FixedClock());
+
+        var result = await handler.HandleAsync(new BeginPasskeyRegistrationCommand(
+            userId,
+            "Phone passkey",
+            new DeviceContext(null, "Phone", "Android", null, null)), CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(SecurityErrorCodes.ValidationFailed, result.Error?.Code);
+        Assert.Null(passkey.LastBeginRequest);
     }
 
     [Fact]
