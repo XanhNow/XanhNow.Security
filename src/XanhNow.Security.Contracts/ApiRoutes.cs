@@ -5,6 +5,8 @@ public static class ApiRoutes
     public static class Auth
     {
         public const string Register = "/api/v1/auth/register";
+        public const string RegisterPasskeyBegin = "/api/v1/auth/register/passkey/begin";
+        public const string RegisterPasskeyFinish = "/api/v1/auth/register/passkey/finish";
         public const string PasswordLogin = "/api/v1/auth/login/password";
         public const string CompleteMfaLogin = "/api/v1/auth/login/mfa/complete";
         public const string PasskeyLoginBegin = "/api/v1/auth/login/passkey/begin";

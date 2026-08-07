@@ -17,9 +17,9 @@ public sealed record RefreshSessionCommand(Guid UserId, string RefreshTokenRefer
 public sealed record LogoutSessionCommand(Guid UserId, string SessionId, string ReasonCode) : ICommand<LogoutSessionResult>;
 public sealed record LogoutSessionResult(string SessionId, string Status, DateTimeOffset RevokedAtUtc);
 
-public sealed record BeginPasskeyRegistrationCommand(Guid UserId, string DisplayName) : ICommand<BeginPasskeyRegistrationResult>;
+public sealed record BeginPasskeyRegistrationCommand(Guid UserId, string DisplayName, DeviceContext? DeviceContext) : ICommand<BeginPasskeyRegistrationResult>;
 public sealed record BeginPasskeyRegistrationResult(string CeremonyId, JsonElement PublicKeyOptions, DateTimeOffset ExpiresAtUtc);
-public sealed record FinishPasskeyRegistrationCommand(Guid UserId, string CeremonyId, JsonElement Credential, string DeviceName) : ICommand<PasskeyStateResult>;
+public sealed record FinishPasskeyRegistrationCommand(Guid UserId, string CeremonyId, JsonElement Credential, DeviceContext? DeviceContext) : ICommand<PasskeyStateResult>;
 public sealed record PasskeyStateResult(string PasskeyId, bool IsEnabled, DateTimeOffset UpdatedAtUtc);
 public sealed record ListPasskeysQuery(Guid UserId) : IQuery<IReadOnlyCollection<PasskeySummaryResult>>;
 public sealed record PasskeySummaryResult(string PasskeyId, string DisplayName, string DeviceName, bool IsEnabled, DateTimeOffset CreatedAtUtc, DateTimeOffset? LastUsedAtUtc);

@@ -81,13 +81,15 @@ public sealed class PasswordLoginCommandHandler : CoreSliceHandler, IRequestHand
     private readonly IAuthLoginClient _authLogin;
     private readonly IJwtTokenClient _jwt;
     private readonly ISecurityUserRepository _users;
+    private readonly ILocalUnitOfWork _unitOfWork;
 
-    public PasswordLoginCommandHandler(IAuthLoginClient authLogin, IJwtTokenClient jwt, ISecurityUserRepository users, IAuditIntentWriter audit, IClock clock)
+    public PasswordLoginCommandHandler(IAuthLoginClient authLogin, IJwtTokenClient jwt, ISecurityUserRepository users, ILocalUnitOfWork unitOfWork, IAuditIntentWriter audit, IClock clock)
         : base(audit, clock)
     {
         _authLogin = authLogin;
         _jwt = jwt;
         _users = users;
+        _unitOfWork = unitOfWork;
     }
 
     public async Task<Result<PasswordLoginResult>> HandleAsync(PasswordLoginCommand request, CancellationToken cancellationToken)
@@ -122,7 +124,14 @@ public sealed class PasswordLoginCommandHandler : CoreSliceHandler, IRequestHand
     internal async ValueTask<PasswordLoginResult?> EnsureRegistrationCompletedAsync(Guid userId, CancellationToken cancellationToken)
     {
         var user = await _users.FindByIdAsync(userId, cancellationToken);
-        if (user is null || user.IsRegistrationCompleted)
+        if (user is null)
+        {
+            await _users.AddAsync(SecurityUser.CreatePendingPasskey(userId, Now), cancellationToken);
+            await _unitOfWork.CommitAsync(cancellationToken);
+            return new PasswordLoginResult("PasskeyRequired", userId, null, null, CoreSliceDefaults.RegistrationIncompleteReason);
+        }
+
+        if (user.IsRegistrationCompleted)
         {
             return null;
         }
@@ -179,7 +188,7 @@ public sealed class BeginPasskeyRegistrationCommandHandler : IRequestHandler<Beg
 
     public async Task<Result<BeginPasskeyRegistrationResult>> HandleAsync(BeginPasskeyRegistrationCommand request, CancellationToken cancellationToken)
     {
-        var child = await _passkey.BeginAsync(new PasskeyBeginRequest(request.UserId, "registration", request.DisplayName, null, null), cancellationToken);
+        var child = await _passkey.BeginAsync(new PasskeyBeginRequest(request.UserId, "registration", request.DisplayName, null, FinishPasskeyRegistrationCommandHandler.ToPasskeyDevice(request.DeviceContext)), cancellationToken);
         return child.IsSuccess && child.Value is not null
             ? Result<BeginPasskeyRegistrationResult>.Success(new BeginPasskeyRegistrationResult(child.Value.CeremonyId, ParseJson(child.Value.PublicOptionsJson), _clock.UtcNow.AddMinutes(5)))
             : CoreSliceHandler.ChildFailure<BeginPasskeyRegistrationResult>(child.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Passkey begin failed.", true));
@@ -207,12 +216,17 @@ public sealed class FinishPasskeyRegistrationCommandHandler : IRequestHandler<Fi
 
     public async Task<Result<PasskeyStateResult>> HandleAsync(FinishPasskeyRegistrationCommand request, CancellationToken cancellationToken)
     {
+        if (request.DeviceContext is null || string.IsNullOrWhiteSpace(request.DeviceContext.DeviceId))
+        {
+            return Result<PasskeyStateResult>.Failure(Error.Validation(SecurityErrorCodes.ValidationFailed, "deviceContext.deviceId is required."));
+        }
+
         if (await _users.FindByIdAsync(request.UserId, cancellationToken) is null)
         {
             return Result<PasskeyStateResult>.Failure(Error.NotFound("SECURITY_USER_NOT_FOUND", "Security user was not found."));
         }
 
-        var child = await _passkey.FinishAsync(new PasskeyFinishRequest(request.UserId, request.CeremonyId, request.Credential.GetRawText(), new PasskeyDeviceContext(null, request.DeviceName, null, null, null)), cancellationToken);
+        var child = await _passkey.FinishAsync(new PasskeyFinishRequest(request.UserId, request.CeremonyId, request.Credential.GetRawText(), ToPasskeyDevice(request.DeviceContext)), cancellationToken);
         if (child.IsFailure || child.Value is null)
         {
             return CoreSliceHandler.ChildFailure<PasskeyStateResult>(child.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Passkey finish failed.", true));
@@ -241,6 +255,9 @@ public sealed class FinishPasskeyRegistrationCommandHandler : IRequestHandler<Fi
 
         await unitOfWork.CommitAsync(cancellationToken);
     }
+
+    internal static PasskeyDeviceContext? ToPasskeyDevice(DeviceContext? device)
+        => device is null ? null : new PasskeyDeviceContext(device.DeviceId, device.DeviceName, device.Platform, device.IpAddress, device.UserAgent);
 }
 
 public sealed class ListPasskeysQueryHandler : IRequestHandler<ListPasskeysQuery, IReadOnlyCollection<PasskeySummaryResult>>
@@ -296,7 +313,7 @@ public sealed class BeginPasskeyLoginCommandHandler : IRequestHandler<BeginPassk
 
     public async Task<Result<BeginPasskeyLoginResult>> HandleAsync(BeginPasskeyLoginCommand request, CancellationToken cancellationToken)
     {
-        var child = await _passkey.BeginAsync(new PasskeyBeginRequest(Guid.Empty, "login", null, request.LoginIdentifier, request.DeviceContext is null ? null : new PasskeyDeviceContext(request.DeviceContext.DeviceId, request.DeviceContext.DeviceName, request.DeviceContext.Platform, request.DeviceContext.IpAddress, request.DeviceContext.UserAgent)), cancellationToken);
+        var child = await _passkey.BeginAsync(new PasskeyBeginRequest(Guid.Empty, "login", null, request.LoginIdentifier, FinishPasskeyRegistrationCommandHandler.ToPasskeyDevice(request.DeviceContext)), cancellationToken);
         return child.IsSuccess && child.Value is not null
             ? Result<BeginPasskeyLoginResult>.Success(new BeginPasskeyLoginResult(child.Value.CeremonyId, JsonDocument.Parse(child.Value.PublicOptionsJson).RootElement.Clone(), _clock.UtcNow.AddMinutes(5)))
             : CoreSliceHandler.ChildFailure<BeginPasskeyLoginResult>(child.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Passkey login begin failed.", true));
@@ -318,7 +335,7 @@ public sealed class FinishPasskeyLoginCommandHandler : IRequestHandler<FinishPas
 
     public async Task<Result<PasswordLoginResult>> HandleAsync(FinishPasskeyLoginCommand request, CancellationToken cancellationToken)
     {
-        var passkey = await _passkey.FinishAsync(new PasskeyFinishRequest(Guid.Empty, request.CeremonyId, request.Credential.GetRawText(), request.DeviceContext is null ? null : new PasskeyDeviceContext(request.DeviceContext.DeviceId, request.DeviceContext.DeviceName, request.DeviceContext.Platform, request.DeviceContext.IpAddress, request.DeviceContext.UserAgent)), cancellationToken);
+        var passkey = await _passkey.FinishAsync(new PasskeyFinishRequest(Guid.Empty, request.CeremonyId, request.Credential.GetRawText(), FinishPasskeyRegistrationCommandHandler.ToPasskeyDevice(request.DeviceContext)), cancellationToken);
         if (passkey.IsFailure || passkey.Value is null)
         {
             return CoreSliceHandler.ChildFailure<PasswordLoginResult>(passkey.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Passkey login finish failed.", true));
@@ -363,7 +380,7 @@ public sealed class BeginRegistrationPasskeyCommandHandler : IRequestHandler<Beg
             return Result<BeginRegistrationPasskeyResult>.Failure(Error.Conflict("SECURITY_REGISTRATION_ALREADY_COMPLETED", "Registration has already been completed."));
         }
 
-        var child = await _passkey.BeginAsync(new PasskeyBeginRequest(request.UserId, "registration", request.DisplayName, null, request.DeviceContext is null ? null : new PasskeyDeviceContext(request.DeviceContext.DeviceId, request.DeviceContext.DeviceName, request.DeviceContext.Platform, request.DeviceContext.IpAddress, request.DeviceContext.UserAgent)), cancellationToken);
+        var child = await _passkey.BeginAsync(new PasskeyBeginRequest(request.UserId, "registration", request.DisplayName, null, FinishPasskeyRegistrationCommandHandler.ToPasskeyDevice(request.DeviceContext)), cancellationToken);
         return child.IsSuccess && child.Value is not null
             ? Result<BeginRegistrationPasskeyResult>.Success(new BeginRegistrationPasskeyResult(request.UserId, child.Value.CeremonyId, JsonDocument.Parse(string.IsNullOrWhiteSpace(child.Value.PublicOptionsJson) ? "{}" : child.Value.PublicOptionsJson).RootElement.Clone(), _clock.UtcNow.AddMinutes(5)))
             : CoreSliceHandler.ChildFailure<BeginRegistrationPasskeyResult>(child.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Passkey begin failed.", true));
@@ -389,6 +406,11 @@ public sealed class FinishRegistrationPasskeyCommandHandler : IRequestHandler<Fi
 
     public async Task<Result<FinishRegistrationPasskeyResult>> HandleAsync(FinishRegistrationPasskeyCommand request, CancellationToken cancellationToken)
     {
+        if (request.DeviceContext is null || string.IsNullOrWhiteSpace(request.DeviceContext.DeviceId))
+        {
+            return Result<FinishRegistrationPasskeyResult>.Failure(Error.Validation(SecurityErrorCodes.ValidationFailed, "deviceContext.deviceId is required."));
+        }
+
         var user = await _users.FindByIdAsync(request.UserId, cancellationToken);
         if (user is null)
         {
@@ -400,7 +422,7 @@ public sealed class FinishRegistrationPasskeyCommandHandler : IRequestHandler<Fi
             return Result<FinishRegistrationPasskeyResult>.Success(new FinishRegistrationPasskeyResult(request.UserId, user.RegistrationStatus.ToString(), user.RegistrationCompletedAt ?? _clock.UtcNow));
         }
 
-        var child = await _passkey.FinishAsync(new PasskeyFinishRequest(request.UserId, request.CeremonyId, request.Credential.GetRawText(), request.DeviceContext is null ? null : new PasskeyDeviceContext(request.DeviceContext.DeviceId, request.DeviceContext.DeviceName, request.DeviceContext.Platform, request.DeviceContext.IpAddress, request.DeviceContext.UserAgent)), cancellationToken);
+        var child = await _passkey.FinishAsync(new PasskeyFinishRequest(request.UserId, request.CeremonyId, request.Credential.GetRawText(), FinishPasskeyRegistrationCommandHandler.ToPasskeyDevice(request.DeviceContext)), cancellationToken);
         if (child.IsFailure || child.Value is null)
         {
             return CoreSliceHandler.ChildFailure<FinishRegistrationPasskeyResult>(child.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Passkey finish failed.", true));

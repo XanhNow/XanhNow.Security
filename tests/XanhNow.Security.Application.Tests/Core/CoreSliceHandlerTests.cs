@@ -8,6 +8,7 @@ using XanhNow.Security.Application.Abstractions.Ids;
 using XanhNow.Security.Application.Abstractions.Outbox;
 using XanhNow.Security.Application.Abstractions.Persistence;
 using XanhNow.Security.Application.Abstractions.Time;
+using XanhNow.Security.Application.Common.Results;
 using XanhNow.Security.Application.Core;
 using XanhNow.Security.Domain.Profiles;
 using XanhNow.Security.Domain.Users;
@@ -46,7 +47,8 @@ public sealed class CoreSliceHandlerTests
         var authLogin = new FakeAuthLoginClient { PasswordResult = new AuthLoginPasswordResult(userId, "pwd") };
         var jwt = new FakeJwtTokenClient { IssueResult = new JwtIssueResult("access", "refresh-ref", Now.AddMinutes(15)) };
         var users = new FakeSecurityUserRepository();
-        var handler = new PasswordLoginCommandHandler(authLogin, jwt, users, new FakeAuditIntentWriter(), new FixedClock());
+        await users.AddAsync(SecurityUser.Create(userId, Now), CancellationToken.None);
+        var handler = new PasswordLoginCommandHandler(authLogin, jwt, users, new FakeUnitOfWork(), new FakeAuditIntentWriter(), new FixedClock());
 
         var result = await handler.HandleAsync(new PasswordLoginCommand("0900000001", "P@ssw0rd!", null), CancellationToken.None);
 
@@ -65,7 +67,7 @@ public sealed class CoreSliceHandlerTests
         var jwt = new FakeJwtTokenClient { IssueResult = new JwtIssueResult("access", "refresh-ref", Now.AddMinutes(15)) };
         var users = new FakeSecurityUserRepository();
         await users.AddAsync(SecurityUser.CreatePendingPasskey(userId, Now), CancellationToken.None);
-        var handler = new PasswordLoginCommandHandler(authLogin, jwt, users, new FakeAuditIntentWriter(), new FixedClock());
+        var handler = new PasswordLoginCommandHandler(authLogin, jwt, users, new FakeUnitOfWork(), new FakeAuditIntentWriter(), new FixedClock());
 
         var result = await handler.HandleAsync(new PasswordLoginCommand("0900000001", "P@ssw0rd!", null), CancellationToken.None);
 
@@ -73,6 +75,28 @@ public sealed class CoreSliceHandlerTests
         Assert.Equal("PasskeyRequired", result.Value!.State);
         Assert.Null(result.Value.Tokens);
         Assert.Null(jwt.LastIssueRequest);
+    }
+
+    [Fact]
+    public async Task Password_login_recovers_missing_security_user_as_pending_passkey_and_does_not_issue_jwt()
+    {
+        var userId = Guid.Parse("abababab-abab-abab-abab-abababababab");
+        var authLogin = new FakeAuthLoginClient { PasswordResult = new AuthLoginPasswordResult(userId, "pwd") };
+        var jwt = new FakeJwtTokenClient { IssueResult = new JwtIssueResult("access", "refresh-ref", Now.AddMinutes(15)) };
+        var users = new FakeSecurityUserRepository();
+        var unitOfWork = new FakeUnitOfWork();
+        var handler = new PasswordLoginCommandHandler(authLogin, jwt, users, unitOfWork, new FakeAuditIntentWriter(), new FixedClock());
+
+        var result = await handler.HandleAsync(new PasswordLoginCommand("0900000001", "P@ssw0rd!", null), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("PasskeyRequired", result.Value!.State);
+        Assert.Equal("registration_passkey_required", result.Value.ReasonCode);
+        Assert.Null(result.Value.Tokens);
+        Assert.Null(jwt.LastIssueRequest);
+        Assert.True(users.Contains(userId));
+        Assert.False((await users.FindByIdAsync(userId, CancellationToken.None))!.IsRegistrationCompleted);
+        Assert.Equal(1, unitOfWork.CommitCount);
     }
 
     [Fact]
@@ -86,14 +110,15 @@ public sealed class CoreSliceHandlerTests
             ListResult = [new PasskeyDescriptor("credential-1", "Phone passkey", false)]
         };
 
+        var deviceContext = new DeviceContext("device-1", "Phone", "Android", null, null);
         var begin = await new BeginPasskeyRegistrationCommandHandler(passkey, new FixedClock())
-            .HandleAsync(new BeginPasskeyRegistrationCommand(userId, "Phone passkey"), CancellationToken.None);
+            .HandleAsync(new BeginPasskeyRegistrationCommand(userId, "Phone passkey", deviceContext), CancellationToken.None);
         var users = new FakeSecurityUserRepository();
         var profiles = new FakeSecurityProfileStore();
         var unitOfWork = new FakeUnitOfWork();
         await users.AddAsync(SecurityUser.CreatePendingPasskey(userId, Now), CancellationToken.None);
         var finish = await new FinishPasskeyRegistrationCommandHandler(passkey, users, profiles, unitOfWork, new FixedClock())
-            .HandleAsync(new FinishPasskeyRegistrationCommand(userId, "ceremony-1", System.Text.Json.JsonDocument.Parse("""{"id":"credential-1"}""").RootElement.Clone(), "Phone"), CancellationToken.None);
+            .HandleAsync(new FinishPasskeyRegistrationCommand(userId, "ceremony-1", System.Text.Json.JsonDocument.Parse("""{"id":"credential-1"}""").RootElement.Clone(), deviceContext), CancellationToken.None);
         var list = await new ListPasskeysQueryHandler(passkey, new FixedClock())
             .HandleAsync(new ListPasskeysQuery(userId), CancellationToken.None);
         var revoke = await new RevokePasskeyCommandHandler(passkey, new FixedClock())
@@ -107,6 +132,26 @@ public sealed class CoreSliceHandlerTests
         Assert.True(revoke.IsSuccess);
         Assert.Equal("registration", passkey.LastBeginRequest?.Purpose);
         Assert.Equal("credential-1", passkey.LastRevokeCredentialId);
+    }
+
+    [Fact]
+    public async Task Registration_passkey_finish_requires_device_id_before_calling_child_app()
+    {
+        var userId = Guid.Parse("cdcdcdcd-cdcd-cdcd-cdcd-cdcdcdcdcdcd");
+        var passkey = new FakePasskeyClient();
+        var users = new FakeSecurityUserRepository();
+        await users.AddAsync(SecurityUser.CreatePendingPasskey(userId, Now), CancellationToken.None);
+        var handler = new FinishRegistrationPasskeyCommandHandler(passkey, users, new FakeSecurityProfileStore(), new FakeUnitOfWork(), new FixedClock());
+
+        var result = await handler.HandleAsync(new FinishRegistrationPasskeyCommand(
+            userId,
+            "ceremony-1",
+            System.Text.Json.JsonDocument.Parse("""{"id":"credential-1"}""").RootElement.Clone(),
+            new DeviceContext(null, "Phone", "Android", null, null)), CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(SecurityErrorCodes.ValidationFailed, result.Error?.Code);
+        Assert.Null(passkey.LastFinishRequest);
     }
 
     [Fact]
@@ -388,6 +433,7 @@ public sealed class CoreSliceHandlerTests
         public IReadOnlyCollection<PasskeyDescriptor> ListResult { get; init; } = [];
         public PasskeyRevokeAllResult RevokeAllResult { get; init; } = new(0, Now);
         public PasskeyBeginRequest? LastBeginRequest { get; private set; }
+        public PasskeyFinishRequest? LastFinishRequest { get; private set; }
         public string? LastRevokeCredentialId { get; private set; }
         public PasskeyRenameRequest? LastRenameRequest { get; private set; }
         public PasskeyStateChangeRequest? LastStateChangeRequest { get; private set; }
@@ -400,7 +446,10 @@ public sealed class CoreSliceHandlerTests
         }
 
         public ValueTask<ChildCallResult<PasskeyFinishResult>> FinishAsync(PasskeyFinishRequest request, CancellationToken cancellationToken)
-            => ValueTask.FromResult(ChildCallResult<PasskeyFinishResult>.Success(FinishResult));
+        {
+            LastFinishRequest = request;
+            return ValueTask.FromResult(ChildCallResult<PasskeyFinishResult>.Success(FinishResult));
+        }
 
         public ValueTask<ChildCallResult<IReadOnlyCollection<PasskeyDescriptor>>> ListAsync(Guid userId, CancellationToken cancellationToken)
             => ValueTask.FromResult(ChildCallResult<IReadOnlyCollection<PasskeyDescriptor>>.Success(ListResult));
@@ -456,4 +505,3 @@ public sealed class CoreSliceHandlerTests
         }
     }
 }
-

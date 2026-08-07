@@ -539,7 +539,10 @@ namespace XanhNow.Security.Infrastructure.Persistence.Migrations
                     b.HasIndex("Status")
                         .HasDatabaseName("ix_security_users_status");
 
-                    b.ToTable("security_users", "security");
+                    b.ToTable("security_users", "security", t =>
+                        {
+                            t.HasCheckConstraint("ck_security_users_registration_status", "registration_status IN ('PendingPasskey', 'Completed')");
+                        });
                 });
 
             modelBuilder.Entity("XanhNow.Security.Infrastructure.Persistence.Models.SecurityOutboxMessageRow", b =>
