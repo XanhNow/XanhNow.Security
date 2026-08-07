@@ -189,7 +189,11 @@ BEGIN
     CREATE TABLE security.security_users (
         user_id uuid NOT NULL,
         status character varying(64) NOT NULL,
+        registration_status character varying(64) NOT NULL DEFAULT 'Completed',
         risk_level character varying(64) NOT NULL,
+        password_registered_at_utc timestamp with time zone,
+        passkey_registered_at_utc timestamp with time zone,
+        registration_completed_at_utc timestamp with time zone,
         created_at timestamp with time zone NOT NULL,
         updated_at timestamp with time zone NOT NULL,
         last_reason_code character varying(128),
@@ -343,6 +347,13 @@ DO $EF$
 BEGIN
     IF NOT EXISTS(SELECT 1 FROM security.__ef_migrations_history WHERE "MigrationId" = '20260720142230_InitialSecuritySchema') THEN
     CREATE INDEX ix_security_users_risk_level ON security.security_users (risk_level);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM security.__ef_migrations_history WHERE "MigrationId" = '20260720142230_InitialSecuritySchema') THEN
+    CREATE INDEX ix_security_users_registration_status ON security.security_users (registration_status);
     END IF;
 END $EF$;
 

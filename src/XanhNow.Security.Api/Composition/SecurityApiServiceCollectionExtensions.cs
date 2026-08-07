@@ -149,6 +149,8 @@ public static class SecurityApiServiceCollectionExtensions
         services.AddScoped<IRequestHandler<RevokePasskeyCommand, PasskeyStateResult>, RevokePasskeyCommandHandler>();
         services.AddScoped<IRequestHandler<BeginPasskeyLoginCommand, BeginPasskeyLoginResult>, BeginPasskeyLoginCommandHandler>();
         services.AddScoped<IRequestHandler<FinishPasskeyLoginCommand, PasswordLoginResult>, FinishPasskeyLoginCommandHandler>();
+        services.AddScoped<IRequestHandler<BeginRegistrationPasskeyCommand, BeginRegistrationPasskeyResult>, BeginRegistrationPasskeyCommandHandler>();
+        services.AddScoped<IRequestHandler<FinishRegistrationPasskeyCommand, FinishRegistrationPasskeyResult>, FinishRegistrationPasskeyCommandHandler>();
         services.AddScoped<IRequestHandler<BeginSmartOtpEnrollmentCommand, BeginSmartOtpEnrollmentResult>, BeginSmartOtpEnrollmentCommandHandler>();
         services.AddScoped<IRequestHandler<ConfirmSmartOtpEnrollmentCommand, SmartOtpDeviceStateResult>, ConfirmSmartOtpEnrollmentCommandHandler>();
         services.AddScoped<IRequestHandler<StartStepUpCommand, StepUpChallengeResult>, StartStepUpCommandHandler>();

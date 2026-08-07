@@ -17,6 +17,8 @@ public sealed class AuthController : ApiControllerBase
     private readonly ApplicationExecutor<PasswordLoginCommand, PasswordLoginResult> _passwordLogin;
     private readonly ApplicationExecutor<BeginPasskeyLoginCommand, BeginPasskeyLoginResult> _beginPasskeyLogin;
     private readonly ApplicationExecutor<FinishPasskeyLoginCommand, PasswordLoginResult> _finishPasskeyLogin;
+    private readonly ApplicationExecutor<BeginRegistrationPasskeyCommand, BeginRegistrationPasskeyResult> _beginRegistrationPasskey;
+    private readonly ApplicationExecutor<FinishRegistrationPasskeyCommand, FinishRegistrationPasskeyResult> _finishRegistrationPasskey;
     private readonly ApplicationExecutor<BeginLoginMfaCommand, LoginMfaChallengeResult> _beginLoginMfa;
     private readonly ApplicationExecutor<CompleteLoginMfaCommand, ProtectedGrantResult> _completeLoginMfa;
     private readonly ApplicationExecutor<CompletePasskeyLoginWithGrantCommand, ProtectedGrantResult> _completePasskeyLoginWithGrant;
@@ -26,6 +28,8 @@ public sealed class AuthController : ApiControllerBase
         ApplicationExecutor<PasswordLoginCommand, PasswordLoginResult> passwordLogin,
         ApplicationExecutor<BeginPasskeyLoginCommand, BeginPasskeyLoginResult> beginPasskeyLogin,
         ApplicationExecutor<FinishPasskeyLoginCommand, PasswordLoginResult> finishPasskeyLogin,
+        ApplicationExecutor<BeginRegistrationPasskeyCommand, BeginRegistrationPasskeyResult> beginRegistrationPasskey,
+        ApplicationExecutor<FinishRegistrationPasskeyCommand, FinishRegistrationPasskeyResult> finishRegistrationPasskey,
         ApplicationExecutor<BeginLoginMfaCommand, LoginMfaChallengeResult> beginLoginMfa,
         ApplicationExecutor<CompleteLoginMfaCommand, ProtectedGrantResult> completeLoginMfa,
         ApplicationExecutor<CompletePasskeyLoginWithGrantCommand, ProtectedGrantResult> completePasskeyLoginWithGrant)
@@ -34,6 +38,8 @@ public sealed class AuthController : ApiControllerBase
         _passwordLogin = passwordLogin;
         _beginPasskeyLogin = beginPasskeyLogin;
         _finishPasskeyLogin = finishPasskeyLogin;
+        _beginRegistrationPasskey = beginRegistrationPasskey;
+        _finishRegistrationPasskey = finishRegistrationPasskey;
         _beginLoginMfa = beginLoginMfa;
         _completeLoginMfa = completeLoginMfa;
         _completePasskeyLoginWithGrant = completePasskeyLoginWithGrant;
@@ -45,7 +51,25 @@ public sealed class AuthController : ApiControllerBase
     public async Task<ActionResult<ApiResponse<RegisterResponse>>> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken)
     {
         var result = await _register.ExecuteAsync(new RegisterCommand(request.PhoneNumber, request.Password, MapDevice(request.DeviceContext)), cancellationToken);
-        return FromApplicationResult(result, x => new RegisterResponse(x.UserId, SecurityStatusContract.Active, x.RegisteredAtUtc));
+        return FromApplicationResult(result, x => new RegisterResponse(x.UserId, SecurityStatusContract.Active, MapRegistrationStatus(x.RegistrationStatus), x.RegisteredAtUtc));
+    }
+
+    [AllowAnonymous]
+    [HttpPost("register/passkey/begin")]
+    [EndpointMaturity("Current", "auth.register.passkey.begin")]
+    public async Task<ActionResult<ApiResponse<BeginRegistrationPasskeyResponse>>> BeginRegistrationPasskeyAsync(BeginRegistrationPasskeyRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _beginRegistrationPasskey.ExecuteAsync(new BeginRegistrationPasskeyCommand(request.UserId, request.DisplayName, MapDevice(request.DeviceContext)), cancellationToken);
+        return FromApplicationResult(result, x => new BeginRegistrationPasskeyResponse(x.UserId, x.CeremonyId, x.PublicKeyOptions, x.ExpiresAtUtc));
+    }
+
+    [AllowAnonymous]
+    [HttpPost("register/passkey/finish")]
+    [EndpointMaturity("Current", "auth.register.passkey.finish")]
+    public async Task<ActionResult<ApiResponse<FinishRegistrationPasskeyResponse>>> FinishRegistrationPasskeyAsync(FinishRegistrationPasskeyRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _finishRegistrationPasskey.ExecuteAsync(new FinishRegistrationPasskeyCommand(request.UserId, request.CeremonyId, request.Credential, MapDevice(request.DeviceContext)), cancellationToken);
+        return FromApplicationResult(result, x => new FinishRegistrationPasskeyResponse(x.UserId, MapRegistrationStatus(x.RegistrationStatus), x.CompletedAtUtc));
     }
 
     [AllowAnonymous]
@@ -115,4 +139,7 @@ public sealed class AuthController : ApiControllerBase
 
     private static ProtectedGrantResponse MapGrant(ProtectedGrantResult result)
         => new(result.GrantId, result.Grant, result.GrantType, result.Audience, result.Purpose, result.ExpiresAtUtc);
+
+    private static RegistrationStatusContract MapRegistrationStatus(string status)
+        => Enum.TryParse<RegistrationStatusContract>(status, ignoreCase: true, out var parsed) ? parsed : RegistrationStatusContract.PendingPasskey;
 }

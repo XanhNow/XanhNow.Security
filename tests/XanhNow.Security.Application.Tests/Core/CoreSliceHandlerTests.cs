@@ -32,6 +32,7 @@ public sealed class CoreSliceHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(userId, result.Value!.UserId);
+        Assert.Equal(UserRegistrationStatus.PendingPasskey.ToString(), result.Value.RegistrationStatus);
         Assert.Equal("0900000000", authLogin.LastRegisterRequest?.PhoneNumber);
         Assert.True(users.Contains(userId));
         Assert.Equal(1, unitOfWork.CommitCount);
@@ -44,7 +45,8 @@ public sealed class CoreSliceHandlerTests
         var userId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
         var authLogin = new FakeAuthLoginClient { PasswordResult = new AuthLoginPasswordResult(userId, "pwd") };
         var jwt = new FakeJwtTokenClient { IssueResult = new JwtIssueResult("access", "refresh-ref", Now.AddMinutes(15)) };
-        var handler = new PasswordLoginCommandHandler(authLogin, jwt, new FakeAuditIntentWriter(), new FixedClock());
+        var users = new FakeSecurityUserRepository();
+        var handler = new PasswordLoginCommandHandler(authLogin, jwt, users, new FakeAuditIntentWriter(), new FixedClock());
 
         var result = await handler.HandleAsync(new PasswordLoginCommand("0900000001", "P@ssw0rd!", null), CancellationToken.None);
 
@@ -53,6 +55,24 @@ public sealed class CoreSliceHandlerTests
         Assert.Equal(userId, jwt.LastIssueRequest?.UserId);
         Assert.Equal("access", result.Value.Tokens?.AccessToken);
         Assert.Equal("refresh-ref", result.Value.Tokens?.RefreshToken);
+    }
+
+    [Fact]
+    public async Task Password_login_requires_completed_registration_before_jwt_issue()
+    {
+        var userId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        var authLogin = new FakeAuthLoginClient { PasswordResult = new AuthLoginPasswordResult(userId, "pwd") };
+        var jwt = new FakeJwtTokenClient { IssueResult = new JwtIssueResult("access", "refresh-ref", Now.AddMinutes(15)) };
+        var users = new FakeSecurityUserRepository();
+        await users.AddAsync(SecurityUser.CreatePendingPasskey(userId, Now), CancellationToken.None);
+        var handler = new PasswordLoginCommandHandler(authLogin, jwt, users, new FakeAuditIntentWriter(), new FixedClock());
+
+        var result = await handler.HandleAsync(new PasswordLoginCommand("0900000001", "P@ssw0rd!", null), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("PasskeyRequired", result.Value!.State);
+        Assert.Null(result.Value.Tokens);
+        Assert.Null(jwt.LastIssueRequest);
     }
 
     [Fact]
@@ -68,7 +88,11 @@ public sealed class CoreSliceHandlerTests
 
         var begin = await new BeginPasskeyRegistrationCommandHandler(passkey, new FixedClock())
             .HandleAsync(new BeginPasskeyRegistrationCommand(userId, "Phone passkey"), CancellationToken.None);
-        var finish = await new FinishPasskeyRegistrationCommandHandler(passkey, new FixedClock())
+        var users = new FakeSecurityUserRepository();
+        var profiles = new FakeSecurityProfileStore();
+        var unitOfWork = new FakeUnitOfWork();
+        await users.AddAsync(SecurityUser.CreatePendingPasskey(userId, Now), CancellationToken.None);
+        var finish = await new FinishPasskeyRegistrationCommandHandler(passkey, users, profiles, unitOfWork, new FixedClock())
             .HandleAsync(new FinishPasskeyRegistrationCommand(userId, "ceremony-1", System.Text.Json.JsonDocument.Parse("""{"id":"credential-1"}""").RootElement.Clone(), "Phone"), CancellationToken.None);
         var list = await new ListPasskeysQueryHandler(passkey, new FixedClock())
             .HandleAsync(new ListPasskeysQuery(userId), CancellationToken.None);
@@ -77,6 +101,8 @@ public sealed class CoreSliceHandlerTests
 
         Assert.True(begin.IsSuccess);
         Assert.True(finish.IsSuccess);
+        Assert.True((await users.FindByIdAsync(userId, CancellationToken.None))!.IsRegistrationCompleted);
+        Assert.Equal(1, unitOfWork.CommitCount);
         Assert.Single(list.Value!);
         Assert.True(revoke.IsSuccess);
         Assert.Equal("registration", passkey.LastBeginRequest?.Purpose);
@@ -430,5 +456,4 @@ public sealed class CoreSliceHandlerTests
         }
     }
 }
-
 
