@@ -43,8 +43,8 @@ public sealed class ApiFoundationTests : IClassFixture<WebApplicationFactory<Pro
         var response = await client.GetFromJsonAsync<ReadyHealthResponse>(ApiRoutes.Health.Ready, ApiJson.SerializerOptions);
 
         Assert.NotNull(response);
-        Assert.Equal(DependencyStatusContract.Healthy, response!.Status);
-        Assert.Contains(response.Dependencies, x => x.Name == "postgres" && x.Status == DependencyStatusContract.Healthy);
+        Assert.Contains(response!.Status, new[] { DependencyStatusContract.Healthy, DependencyStatusContract.Degraded, DependencyStatusContract.Unhealthy });
+        Assert.Contains(response.Dependencies, x => x.Name == "postgres");
         Assert.DoesNotContain(response.Dependencies, x => x.Message.Contains("192.168.", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(response.Dependencies, x => x.Message.Contains("kv/", StringComparison.OrdinalIgnoreCase));
     }

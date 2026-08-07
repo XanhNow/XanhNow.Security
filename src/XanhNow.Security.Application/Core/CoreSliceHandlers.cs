@@ -119,7 +119,7 @@ public sealed class PasswordLoginCommandHandler : CoreSliceHandler, IRequestHand
         return Result<PasswordLoginResult>.Success(new PasswordLoginResult("Completed", login.Value.UserId, ToTokenPair(token.Value), null, null));
     }
 
-    internal static TokenPairResult ToTokenPair(JwtIssueResult token) => new(token.AccessToken, token.RefreshTokenReference, token.ExpiresAt, token.ExpiresAt.AddDays(30));
+    internal static TokenPairResult ToTokenPair(JwtIssueResult token) => new(token.AccessToken, token.RefreshTokenReference, token.ExpiresAt, token.RefreshTokenExpiresAt, token.SessionId);
 
     internal async ValueTask<PasswordLoginResult?> EnsureRegistrationCompletedAsync(Guid userId, CancellationToken cancellationToken)
     {
@@ -148,10 +148,23 @@ public sealed class RefreshSessionCommandHandler : IRequestHandler<RefreshSessio
 
     public async Task<Result<TokenPairResult>> HandleAsync(RefreshSessionCommand request, CancellationToken cancellationToken)
     {
-        var token = await _jwt.RefreshAsync(new JwtRefreshRequest(request.UserId, request.RefreshTokenReference), cancellationToken);
-        return token.IsSuccess && token.Value is not null
-            ? Result<TokenPairResult>.Success(PasswordLoginCommandHandler.ToTokenPair(token.Value))
-            : CoreSliceHandler.ChildFailure<TokenPairResult>(token.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "JWT refresh failed.", true));
+        if (string.IsNullOrWhiteSpace(request.SessionId))
+        {
+            return Result<TokenPairResult>.Failure(Error.Validation(SecurityErrorCodes.ValidationFailed, "sessionId is required."));
+        }
+
+        var token = await _jwt.RefreshAsync(new JwtRefreshRequest(request.UserId, request.RefreshTokenReference, request.SessionId), cancellationToken);
+        if (token.IsFailure || token.Value is null)
+        {
+            return CoreSliceHandler.ChildFailure<TokenPairResult>(token.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "JWT refresh failed.", true));
+        }
+
+        if (string.IsNullOrWhiteSpace(token.Value.SessionId) || !string.Equals(token.Value.SessionId, request.SessionId, StringComparison.Ordinal))
+        {
+            return Result<TokenPairResult>.Failure(Error.Authentication(SecurityErrorCodes.CallerRequired, "Refresh token session mismatch."));
+        }
+
+        return Result<TokenPairResult>.Success(PasswordLoginCommandHandler.ToTokenPair(token.Value));
     }
 }
 

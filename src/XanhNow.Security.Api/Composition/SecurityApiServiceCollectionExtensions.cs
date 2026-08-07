@@ -9,6 +9,8 @@ using XanhNow.Security.Api.Health;
 using XanhNow.Security.Api.OpenApi;
 using XanhNow.Security.Api.Options;
 using XanhNow.Security.Api.Security;
+using XanhNow.Security.Application.Common.Behaviors;
+using XanhNow.Security.Application.Abstractions.Authorization;
 using XanhNow.Security.Application.Common.Requests;
 using XanhNow.Security.Application.Core;
 using XanhNow.Security.Application.Abstractions.Context;
@@ -42,8 +44,9 @@ public static class SecurityApiServiceCollectionExtensions
         services.AddSingleton<HttpCurrentCaller>();
         services.AddSingleton<ICallerContextAccessor>(sp => sp.GetRequiredService<HttpCurrentCaller>());
         services.AddSingleton<ICorrelationContextAccessor>(sp => sp.GetRequiredService<HttpCurrentCaller>());
-        services.AddSingleton<SecurityDependencyHealthService>();
+        services.AddScoped<SecurityDependencyHealthService>();
         services.AddSingleton<OpenApiInventoryService>();
+        services.AddSingleton<IAuthorizationService, CallerPermissionAuthorizationService>();
         services.AddCoreVerticalSlices();
 
         services.AddSecurityPersistence(options =>
@@ -139,6 +142,14 @@ public static class SecurityApiServiceCollectionExtensions
     private static IServiceCollection AddCoreVerticalSlices(this IServiceCollection services)
     {
         services.AddScoped(typeof(ApplicationExecutor<,>));
+        services.AddScoped(typeof(IApplicationBehavior<,>), typeof(ExceptionMappingBehavior<,>));
+        services.AddScoped(typeof(IApplicationBehavior<,>), typeof(CallerAuthenticationBehavior<,>));
+        services.AddScoped(typeof(IApplicationBehavior<,>), typeof(AuthorizationBehavior<,>));
+        services.AddScoped(typeof(IApplicationBehavior<,>), typeof(PolicyBehavior<,>));
+        services.AddScoped(typeof(IApplicationBehavior<,>), typeof(RateLimitBehavior<,>));
+        services.AddScoped(typeof(IApplicationBehavior<,>), typeof(ValidationBehavior<,>));
+        services.AddScoped(typeof(IApplicationBehavior<,>), typeof(IdempotencyBehavior<,>));
+        services.AddScoped(typeof(IApplicationBehavior<,>), typeof(RequestAuditBehavior<,>));
         services.AddScoped<IRequestHandler<RegisterCommand, RegisterResult>, RegisterCommandHandler>();
         services.AddScoped<IRequestHandler<PasswordLoginCommand, PasswordLoginResult>, PasswordLoginCommandHandler>();
         services.AddScoped<IRequestHandler<RefreshSessionCommand, TokenPairResult>, RefreshSessionCommandHandler>();
@@ -163,6 +174,7 @@ public static class SecurityApiServiceCollectionExtensions
         services.AddScoped<IRequestHandler<ConfirmPhoneChangeCommand, AccountSecurityOperationResult>, ConfirmPhoneChangeCommandHandler>();
         services.AddScoped<IRequestHandler<CancelPhoneChangeCommand, AccountSecurityOperationResult>, CancelPhoneChangeCommandHandler>();
         services.AddScoped<IRequestHandler<GetSecurityProfileQuery, SecurityProfileResult>, GetSecurityProfileQueryHandler>();
+        services.AddScoped<IRequestHandler<GetOperationStatusQuery, OperationStatusResult>, GetOperationStatusQueryHandler>();
         services.AddScoped<ChangeAccountStateCommandHandler>();
         services.AddScoped<IRequestHandler<ChangeAccountStateCommand, AccountStateResult>>(sp => sp.GetRequiredService<ChangeAccountStateCommandHandler>());
         services.AddScoped<IRequestHandler<DeleteOwnAccountCommand, DeleteOwnAccountResult>, DeleteOwnAccountCommandHandler>();

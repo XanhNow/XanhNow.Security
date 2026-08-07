@@ -18,4 +18,5 @@ public sealed class SecurityApiOptions
     public int AnonymousRequestsPerMinute { get; set; } = 60;
     public int UserRequestsPerMinute { get; set; } = 120;
     public int ServiceRequestsPerMinute { get; set; } = 300;
+    public Dictionary<string, string> InternalServiceApiKeys { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }

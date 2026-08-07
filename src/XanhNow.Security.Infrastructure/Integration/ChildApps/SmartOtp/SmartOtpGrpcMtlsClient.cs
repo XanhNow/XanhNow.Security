@@ -120,7 +120,7 @@ internal sealed class SmartOtpGrpcMtlsClient : ISmartOtpClient, IDisposable
         => ValueTask.FromResult(ChildCallResult<SmartOtpVerifyResult>.Failure(new ChildCallError("smart_otp.contract_incomplete", "Smart OTP verify requires device id and transaction context.", false)));
 
     public ValueTask<ChildCallResult<SmartOtpRevokeAllDevicesResult>> RevokeAllDevicesAsync(SmartOtpRevokeAllDevicesRequest request, CancellationToken cancellationToken)
-        => ValueTask.FromResult(ChildCallResult<SmartOtpRevokeAllDevicesResult>.Success(new SmartOtpRevokeAllDevicesResult(0, DateTimeOffset.UtcNow)));
+        => ValueTask.FromResult(ChildCallResult<SmartOtpRevokeAllDevicesResult>.Failure(new ChildCallError("smart_otp.revoke_all_unsupported", "Smart OTP provider contract does not support revoke-all devices without device ids.", false)));
 
     public void Dispose() => channel.Dispose();
 

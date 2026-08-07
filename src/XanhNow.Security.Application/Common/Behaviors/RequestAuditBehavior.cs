@@ -1,6 +1,7 @@
 using XanhNow.Security.Application.Abstractions.Audit;
 using XanhNow.Security.Application.Abstractions.Context;
 using XanhNow.Security.Application.Abstractions.Time;
+using XanhNow.Security.Application.Abstractions.Persistence;
 using XanhNow.Security.Application.Common.Requests;
 using XanhNow.Security.Application.Common.Results;
 
@@ -12,13 +13,15 @@ public sealed class RequestAuditBehavior<TRequest, TResponse> : IApplicationBeha
     private readonly ICallerContextAccessor _callerContext;
     private readonly ICorrelationContextAccessor _correlationContext;
     private readonly IAuditIntentWriter _auditIntentWriter;
+    private readonly ILocalUnitOfWork _unitOfWork;
     private readonly IClock _clock;
 
-    public RequestAuditBehavior(ICallerContextAccessor callerContext, ICorrelationContextAccessor correlationContext, IAuditIntentWriter auditIntentWriter, IClock clock)
+    public RequestAuditBehavior(ICallerContextAccessor callerContext, ICorrelationContextAccessor correlationContext, IAuditIntentWriter auditIntentWriter, ILocalUnitOfWork unitOfWork, IClock clock)
     {
         _callerContext = callerContext;
         _correlationContext = correlationContext;
         _auditIntentWriter = auditIntentWriter;
+        _unitOfWork = unitOfWork;
         _clock = clock;
     }
 
@@ -32,6 +35,7 @@ public sealed class RequestAuditBehavior<TRequest, TResponse> : IApplicationBeha
             await _auditIntentWriter.AppendAsync(
                 new AuditIntent(_callerContext.Current.UserId, auditable.AuditAction, outcome, reason, _correlationContext.Current.TraceId, _clock.UtcNow),
                 cancellationToken);
+            await _unitOfWork.CommitAsync(cancellationToken);
         }
 
         return result;

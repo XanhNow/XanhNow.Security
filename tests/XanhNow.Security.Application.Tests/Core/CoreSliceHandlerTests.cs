@@ -4,20 +4,24 @@ using XanhNow.Security.Application.Abstractions.ChildApps.AuthLogin;
 using XanhNow.Security.Application.Abstractions.ChildApps.Jwt;
 using XanhNow.Security.Application.Abstractions.ChildApps.Passkey;
 using XanhNow.Security.Application.Abstractions.ChildApps.SmartOtp;
+using XanhNow.Security.Application.Abstractions.Grant;
 using XanhNow.Security.Application.Abstractions.Ids;
 using XanhNow.Security.Application.Abstractions.Outbox;
 using XanhNow.Security.Application.Abstractions.Persistence;
 using XanhNow.Security.Application.Abstractions.Time;
 using XanhNow.Security.Application.Common.Results;
 using XanhNow.Security.Application.Core;
+using XanhNow.Security.Domain.Grants;
 using XanhNow.Security.Domain.Profiles;
 using XanhNow.Security.Domain.Users;
+using XanhNow.Security.Domain.ValueObjects;
 
 namespace XanhNow.Security.Application.Tests.Core;
 
 public sealed class CoreSliceHandlerTests
 {
     private static readonly DateTimeOffset Now = new(2026, 7, 26, 10, 0, 0, TimeSpan.Zero);
+    private static JwtIssueResult IssuedToken(string accessToken, string refreshToken, string sessionId) => new(accessToken, refreshToken, Now.AddMinutes(15), Now.AddDays(7), sessionId);
 
     [Fact]
     public async Task Register_calls_auth_login_and_creates_security_user_projection()
@@ -45,7 +49,7 @@ public sealed class CoreSliceHandlerTests
     {
         var userId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
         var authLogin = new FakeAuthLoginClient { PasswordResult = new AuthLoginPasswordResult(userId, "pwd") };
-        var jwt = new FakeJwtTokenClient { IssueResult = new JwtIssueResult("access", "refresh-ref", Now.AddMinutes(15)) };
+        var jwt = new FakeJwtTokenClient { IssueResult = IssuedToken("access", "refresh-ref", "session-1") };
         var users = new FakeSecurityUserRepository();
         await users.AddAsync(SecurityUser.Create(userId, Now), CancellationToken.None);
         var handler = new PasswordLoginCommandHandler(authLogin, jwt, users, new FakeUnitOfWork(), new FakeAuditIntentWriter(), new FixedClock());
@@ -64,7 +68,7 @@ public sealed class CoreSliceHandlerTests
     {
         var userId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
         var authLogin = new FakeAuthLoginClient { PasswordResult = new AuthLoginPasswordResult(userId, "pwd") };
-        var jwt = new FakeJwtTokenClient { IssueResult = new JwtIssueResult("access", "refresh-ref", Now.AddMinutes(15)) };
+        var jwt = new FakeJwtTokenClient { IssueResult = IssuedToken("access", "refresh-ref", "session-1") };
         var users = new FakeSecurityUserRepository();
         await users.AddAsync(SecurityUser.CreatePendingPasskey(userId, Now), CancellationToken.None);
         var handler = new PasswordLoginCommandHandler(authLogin, jwt, users, new FakeUnitOfWork(), new FakeAuditIntentWriter(), new FixedClock());
@@ -82,7 +86,7 @@ public sealed class CoreSliceHandlerTests
     {
         var userId = Guid.Parse("abababab-abab-abab-abab-abababababab");
         var authLogin = new FakeAuthLoginClient { PasswordResult = new AuthLoginPasswordResult(userId, "pwd") };
-        var jwt = new FakeJwtTokenClient { IssueResult = new JwtIssueResult("access", "refresh-ref", Now.AddMinutes(15)) };
+        var jwt = new FakeJwtTokenClient { IssueResult = IssuedToken("access", "refresh-ref", "session-1") };
         var users = new FakeSecurityUserRepository();
         var unitOfWork = new FakeUnitOfWork();
         var handler = new PasswordLoginCommandHandler(authLogin, jwt, users, unitOfWork, new FakeAuditIntentWriter(), new FixedClock());
@@ -108,7 +112,7 @@ public sealed class CoreSliceHandlerTests
             RegisterResult = new AuthLoginRegisterResult(userId),
             PasswordResult = new AuthLoginPasswordResult(userId, "pwd")
         };
-        var jwt = new FakeJwtTokenClient { IssueResult = new JwtIssueResult("access", "refresh-ref", Now.AddMinutes(15)) };
+        var jwt = new FakeJwtTokenClient { IssueResult = IssuedToken("access", "refresh-ref", "session-1") };
         var passkey = new FakePasskeyClient
         {
             BeginResult = new PasskeyBeginResult("ceremony-1", """{"challenge":"abc"}"""),
@@ -292,7 +296,8 @@ public sealed class CoreSliceHandlerTests
 
         var password = await new ChangePasswordCommandHandler(authLogin, audit, new FixedClock())
             .HandleAsync(new ChangePasswordCommand(userId, "old-password", "new-password", "user_requested"), CancellationToken.None);
-        var phone = await new StartPhoneChangeCommandHandler(authLogin, audit, new FixedClock())
+        var phoneGrants = FakeSecurityGrantRepository.WithActiveGrant(userId, "phone.change");
+        var phone = await new StartPhoneChangeCommandHandler(authLogin, new FakeGrantProtector(phoneGrants.GrantId, userId), phoneGrants, new FakeUnitOfWork(), audit, new FixedClock())
             .HandleAsync(new StartPhoneChangeCommand(userId, "0911111111", "step-up-grant", "phone_change"), CancellationToken.None);
         var profile = await new GetSecurityProfileQueryHandler(authLogin, passkey, profiles)
             .HandleAsync(new GetSecurityProfileQuery(userId), CancellationToken.None);
@@ -332,7 +337,8 @@ public sealed class CoreSliceHandlerTests
         var outbox = new FakeOutboxIntentWriter();
         var unitOfWork = new FakeUnitOfWork();
         var audit = new FakeAuditIntentWriter();
-        var handler = new DeleteOwnAccountCommandHandler(authLogin, jwt, passkey, smartOtp, users, outbox, new FakeIdGenerator(), unitOfWork, audit, new FixedClock());
+        var deleteGrants = FakeSecurityGrantRepository.WithActiveGrant(userId, "account_self_delete");
+        var handler = new DeleteOwnAccountCommandHandler(authLogin, jwt, passkey, smartOtp, new FakeGrantProtector(deleteGrants.GrantId, userId), deleteGrants, users, outbox, new FakeIdGenerator(), unitOfWork, audit, new FixedClock());
 
         var result = await handler.HandleAsync(new DeleteOwnAccountCommand(userId, "idem-1", "corr-1", "step-up"), CancellationToken.None);
 
@@ -408,6 +414,60 @@ public sealed class CoreSliceHandlerTests
         }
     }
 
+
+    private sealed class FakeGrantProtector : IGrantProtector
+    {
+        private readonly Guid _grantId;
+        private readonly Guid _userId;
+
+        public FakeGrantProtector(Guid grantId, Guid userId)
+        {
+            _grantId = grantId;
+            _userId = userId;
+        }
+
+        public ValueTask<ProtectedGrant> ProtectAsync(Guid grantId, Guid userId, string purpose, DateTimeOffset expiresAt, CancellationToken cancellationToken)
+            => ValueTask.FromResult(new ProtectedGrant("protected-grant", expiresAt));
+
+        public ValueTask<ProtectedGrantVerification> VerifyAsync(string protectedGrant, string expectedPurpose, CancellationToken cancellationToken)
+            => ValueTask.FromResult(new ProtectedGrantVerification(true, _grantId, _userId, expectedPurpose));
+
+        public ValueTask<bool> TryMarkUsedAsync(string replayKey, DateTimeOffset expiresAt, CancellationToken cancellationToken)
+            => ValueTask.FromResult(true);
+    }
+
+    private sealed class FakeSecurityGrantRepository : ISecurityGrantRepository
+    {
+        private readonly Dictionary<Guid, SecurityGrant> _grants = [];
+
+        public Guid GrantId { get; private init; }
+
+        public static FakeSecurityGrantRepository WithActiveGrant(Guid userId, string purpose)
+        {
+            var id = Guid.Parse("22222222-2222-2222-2222-222222222222");
+            var grant = SecurityGrant.Issue(
+                id,
+                userId,
+                SecurityGrantType.StepUpGrant,
+                GrantAudience.From("security"),
+                GrantPurpose.From(purpose),
+                Now.AddMinutes(-1),
+                Now.AddMinutes(5));
+            grant.Activate(Now);
+            var repository = new FakeSecurityGrantRepository { GrantId = id };
+            repository._grants[id] = grant;
+            return repository;
+        }
+
+        public ValueTask<SecurityGrant?> FindByIdAsync(Guid grantId, CancellationToken cancellationToken)
+            => ValueTask.FromResult(_grants.GetValueOrDefault(grantId));
+
+        public ValueTask AddAsync(SecurityGrant grant, CancellationToken cancellationToken)
+        {
+            _grants[grant.Id] = grant;
+            return ValueTask.CompletedTask;
+        }
+    }
     private sealed class FakeIdGenerator : IIdGenerator
     {
         public Guid NewId() => Guid.Parse("11111111-1111-1111-1111-111111111111");
@@ -478,7 +538,7 @@ public sealed class CoreSliceHandlerTests
 
     private sealed class FakeJwtTokenClient : IJwtTokenClient
     {
-        public JwtIssueResult IssueResult { get; init; } = new("access", "refresh", Now.AddMinutes(15));
+        public JwtIssueResult IssueResult { get; init; } = IssuedToken("access", "refresh", "fake-session");
         public IReadOnlyCollection<JwtSessionDescriptor> Sessions { get; init; } = [];
         public JwtRevokeAllResult RevokeAllResult { get; init; } = new(0, Now);
         public JwtIssueRequest? LastIssueRequest { get; private set; }

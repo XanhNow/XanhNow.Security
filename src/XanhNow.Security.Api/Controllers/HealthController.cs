@@ -11,12 +11,10 @@ namespace XanhNow.Security.Api.Controllers;
 [AllowAnonymous]
 public sealed class HealthController : ApiControllerBase
 {
-    private readonly SecurityDependencyHealthService _health;
     private readonly SecurityApiOptions _options;
 
-    public HealthController(SecurityDependencyHealthService health, IOptions<SecurityApiOptions> options)
+    public HealthController(IOptions<SecurityApiOptions> options)
     {
-        _health = health;
         _options = options.Value;
     }
 
@@ -29,12 +27,14 @@ public sealed class HealthController : ApiControllerBase
     [HttpGet(ApiRoutes.Health.Ready)]
     public async Task<ActionResult<ReadyHealthResponse>> Ready(CancellationToken cancellationToken)
     {
-        return Ok(await _health.CheckReadyAsync(_options.ServiceName, cancellationToken));
+        var health = HttpContext.RequestServices.GetRequiredService<SecurityDependencyHealthService>();
+        return Ok(await health.CheckReadyAsync(_options.ServiceName, cancellationToken));
     }
 
     [HttpGet(ApiRoutes.Health.Dependencies)]
     public async Task<ActionResult<ReadyHealthResponse>> Dependencies(CancellationToken cancellationToken)
     {
-        return Ok(await _health.CheckReadyAsync(_options.ServiceName, cancellationToken));
+        var health = HttpContext.RequestServices.GetRequiredService<SecurityDependencyHealthService>();
+        return Ok(await health.CheckReadyAsync(_options.ServiceName, cancellationToken));
     }
 }
