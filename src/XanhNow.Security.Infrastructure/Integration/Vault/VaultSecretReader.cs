@@ -12,7 +12,7 @@ public interface IVaultSecretReader
     ValueTask<string?> ReadFieldAsync(VaultSecretReference reference, CancellationToken cancellationToken);
 }
 
-internal sealed class VaultSecretReader : IVaultSecretReader
+public sealed class VaultSecretReader : IVaultSecretReader
 {
     private readonly HttpClient _http;
     private readonly VaultIntegrationOptions _options;
