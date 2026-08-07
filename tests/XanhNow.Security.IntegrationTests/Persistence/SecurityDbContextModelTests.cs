@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 using XanhNow.Security.Infrastructure.Persistence;
 
 namespace XanhNow.Security.IntegrationTests.Persistence;
@@ -58,5 +60,19 @@ public sealed class SecurityDbContextModelTests
         Assert.NotNull(property);
         Assert.Equal("step_states", property!.GetColumnName());
         Assert.Equal("jsonb", property.GetColumnType());
+    }
+
+    [Fact]
+    public void Security_users_registration_status_is_guarded_by_check_constraint()
+    {
+        using var db = PersistenceTestFactory.CreateRelationalModelContext();
+        var model = db.GetService<IDesignTimeModel>().Model;
+        var entity = model.GetEntityTypes().Single(x => x.GetTableName() == SecurityDatabaseConstants.UsersTable);
+
+        var constraint = entity.GetCheckConstraints().SingleOrDefault(x => x.Name == "ck_security_users_registration_status");
+
+        Assert.NotNull(constraint);
+        Assert.Contains("PendingPasskey", constraint!.Sql, StringComparison.Ordinal);
+        Assert.Contains("Completed", constraint.Sql, StringComparison.Ordinal);
     }
 }

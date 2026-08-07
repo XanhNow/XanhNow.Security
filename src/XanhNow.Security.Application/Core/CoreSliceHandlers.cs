@@ -188,6 +188,11 @@ public sealed class BeginPasskeyRegistrationCommandHandler : IRequestHandler<Beg
 
     public async Task<Result<BeginPasskeyRegistrationResult>> HandleAsync(BeginPasskeyRegistrationCommand request, CancellationToken cancellationToken)
     {
+        if (request.DeviceContext is null || string.IsNullOrWhiteSpace(request.DeviceContext.DeviceId))
+        {
+            return Result<BeginPasskeyRegistrationResult>.Failure(Error.Validation(SecurityErrorCodes.ValidationFailed, "deviceContext.deviceId is required."));
+        }
+
         var child = await _passkey.BeginAsync(new PasskeyBeginRequest(request.UserId, "registration", request.DisplayName, null, FinishPasskeyRegistrationCommandHandler.ToPasskeyDevice(request.DeviceContext)), cancellationToken);
         return child.IsSuccess && child.Value is not null
             ? Result<BeginPasskeyRegistrationResult>.Success(new BeginPasskeyRegistrationResult(child.Value.CeremonyId, ParseJson(child.Value.PublicOptionsJson), _clock.UtcNow.AddMinutes(5)))
@@ -369,6 +374,11 @@ public sealed class BeginRegistrationPasskeyCommandHandler : IRequestHandler<Beg
 
     public async Task<Result<BeginRegistrationPasskeyResult>> HandleAsync(BeginRegistrationPasskeyCommand request, CancellationToken cancellationToken)
     {
+        if (request.DeviceContext is null || string.IsNullOrWhiteSpace(request.DeviceContext.DeviceId))
+        {
+            return Result<BeginRegistrationPasskeyResult>.Failure(Error.Validation(SecurityErrorCodes.ValidationFailed, "deviceContext.deviceId is required."));
+        }
+
         var user = await _users.FindByIdAsync(request.UserId, cancellationToken);
         if (user is null)
         {
