@@ -10,7 +10,7 @@ public sealed record RegisterResult(Guid UserId, string Status, string Registrat
 
 public sealed record PasswordLoginCommand(string PhoneNumber, string Password, DeviceContext? DeviceContext) : ICommand<PasswordLoginResult>;
 public sealed record PasswordLoginResult(string State, Guid? UserId, TokenPairResult? Tokens, MfaChallengeResult? Mfa, string? ReasonCode);
-public sealed record TokenPairResult(string AccessToken, string RefreshToken, DateTimeOffset AccessTokenExpiresAtUtc, DateTimeOffset RefreshTokenExpiresAtUtc, string TokenType = "Bearer");
+public sealed record TokenPairResult(string AccessToken, string RefreshToken, DateTimeOffset AccessTokenExpiresAtUtc, DateTimeOffset RefreshTokenExpiresAtUtc, string? SessionId, string TokenType = "Bearer");
 public sealed record MfaChallengeResult(string ChallengeId, string Method, DateTimeOffset ExpiresAtUtc);
 
 public sealed record RefreshSessionCommand(Guid UserId, string RefreshTokenReference, string? SessionId) : ICommand<TokenPairResult>;

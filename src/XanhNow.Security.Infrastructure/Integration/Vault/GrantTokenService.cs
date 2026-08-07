@@ -4,10 +4,12 @@ using XanhNow.Security.Infrastructure.Integration.Options;
 
 namespace XanhNow.Security.Infrastructure.Integration.Vault;
 
+public sealed record GrantTokenVerification(bool IsValid, string? Subject, string? Purpose, DateTimeOffset? ExpiresAt);
+
 public interface IGrantTokenService
 {
     ValueTask<string> SignAsync(string subject, string purpose, TimeSpan ttl, CancellationToken cancellationToken);
-    ValueTask<bool> VerifyAsync(string token, string purpose, CancellationToken cancellationToken);
+    ValueTask<GrantTokenVerification> VerifyAsync(string token, string purpose, CancellationToken cancellationToken);
 }
 
 internal sealed class VaultBackedGrantTokenService : IGrantTokenService
@@ -37,12 +39,12 @@ internal sealed class VaultBackedGrantTokenService : IGrantTokenService
         return Convert.ToBase64String(Encoding.UTF8.GetBytes($"{body}.{signature}"));
     }
 
-    public async ValueTask<bool> VerifyAsync(string token, string purpose, CancellationToken cancellationToken)
+    public async ValueTask<GrantTokenVerification> VerifyAsync(string token, string purpose, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(purpose))
         {
-            return false;
+            return new(false, null, null, null);
         }
 
         try
@@ -51,23 +53,30 @@ internal sealed class VaultBackedGrantTokenService : IGrantTokenService
             var parts = decoded.Split('.');
             if (parts.Length != 4 || !string.Equals(parts[1], purpose, StringComparison.Ordinal))
             {
-                return false;
+                return new(false, null, null, null);
             }
 
-            if (!long.TryParse(parts[2], out var expiresAt) || expiresAt <= DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+            if (!long.TryParse(parts[2], out var expiresAtSeconds))
             {
-                return false;
+                return new(false, null, null, null);
+            }
+
+            var expiresAt = DateTimeOffset.FromUnixTimeSeconds(expiresAtSeconds);
+            if (expiresAt <= DateTimeOffset.UtcNow)
+            {
+                return new(false, null, null, expiresAt);
             }
 
             var body = $"{parts[0]}.{parts[1]}.{parts[2]}";
             var expected = await SignBodyAsync(body, cancellationToken);
-            return CryptographicOperations.FixedTimeEquals(
+            var isValid = CryptographicOperations.FixedTimeEquals(
                 Encoding.UTF8.GetBytes(expected),
                 Encoding.UTF8.GetBytes(parts[3]));
+            return new(isValid, isValid ? parts[0] : null, isValid ? parts[1] : null, isValid ? expiresAt : null);
         }
         catch (FormatException)
         {
-            return false;
+            return new(false, null, null, null);
         }
     }
 

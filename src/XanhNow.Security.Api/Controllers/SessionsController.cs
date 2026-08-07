@@ -40,7 +40,7 @@ public sealed class SessionsController : ApiControllerBase
     public async Task<ActionResult<ApiResponse<TokenPairResponse>>> RefreshAsync(RefreshSessionRequest request, CancellationToken cancellationToken)
     {
         var result = await _refresh.ExecuteAsync(new RefreshSessionCommand(CurrentUserIdOrEmpty(), request.RefreshToken, request.SessionId), cancellationToken);
-        return FromApplicationResult(result, x => new TokenPairResponse(x.AccessToken, x.RefreshToken, x.AccessTokenExpiresAtUtc, x.RefreshTokenExpiresAtUtc, x.TokenType));
+        return FromApplicationResult(result, x => new TokenPairResponse(x.AccessToken, x.RefreshToken, x.AccessTokenExpiresAtUtc, x.RefreshTokenExpiresAtUtc, x.SessionId, x.TokenType));
     }
 
     [HttpPost("{sessionId}/logout")]

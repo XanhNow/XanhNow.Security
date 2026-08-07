@@ -80,6 +80,11 @@ public static class ApiRoutes
         public const string Decisions = "/api/v1/policies/decisions";
     }
 
+    public static class Operations
+    {
+        public const string Status = "/api/v1/operations/{operationId}";
+    }
+
     public static class Health
     {
         public const string Live = "/health/live";

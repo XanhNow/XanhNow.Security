@@ -190,7 +190,9 @@ internal sealed class JwtTokenGrpcFacadeClient : IJwtTokenClient, IDisposable
         => new(
             response.Jwt,
             response.RefreshToken,
-            response.JwtExpiry.ToDateTimeOffset());
+            response.JwtExpiry.ToDateTimeOffset(),
+            response.RefreshTokenExpiry.ToDateTimeOffset(),
+            string.IsNullOrWhiteSpace(response.SessionId) ? null : response.SessionId);
 
     private static bool IsEmpty(Google.Protobuf.WellKnownTypes.Timestamp timestamp)
         => timestamp.Seconds == 0 && timestamp.Nanos == 0;

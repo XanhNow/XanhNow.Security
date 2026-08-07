@@ -39,6 +39,7 @@ public sealed class ApiBoundaryTests
         {
             ["AccountController"] = 6,
             ["AuthController"] = 9,
+            ["OperationsController"] = 1,
             ["PasskeysController"] = 7,
             ["PasswordController"] = 4,
             ["PhoneController"] = 3,

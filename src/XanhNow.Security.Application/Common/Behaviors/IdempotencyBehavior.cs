@@ -1,3 +1,4 @@
+using System.Text.Json;
 using XanhNow.Security.Application.Abstractions.Idempotency;
 using XanhNow.Security.Application.Common.Requests;
 using XanhNow.Security.Application.Common.Results;
@@ -30,11 +31,22 @@ public sealed class IdempotencyBehavior<TRequest, TResponse> : IApplicationBehav
             return Result<TResponse>.Failure(Error.Conflict(SecurityErrorCodes.IdempotencyConflict, "Idempotency key is already used by another request."));
         }
 
+        if (existing is not null && existing.Completed)
+        {
+            return Result<TResponse>.Failure(Error.Conflict(SecurityErrorCodes.IdempotencyConflict, "Idempotency key was already completed."));
+        }
+
         if (existing is null)
         {
             await _store.ReserveAsync(idempotent.IdempotencyKey, requestHash, cancellationToken);
         }
 
-        return await next(cancellationToken);
+        var result = await next(cancellationToken);
+        if (result.IsSuccess)
+        {
+            await _store.CompleteAsync(idempotent.IdempotencyKey, JsonSerializer.Serialize(result.Value), cancellationToken);
+        }
+
+        return result;
     }
 }

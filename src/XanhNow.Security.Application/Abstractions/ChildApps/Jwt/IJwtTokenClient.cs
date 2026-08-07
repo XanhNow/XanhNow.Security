@@ -3,8 +3,8 @@ using XanhNow.Security.Application.Abstractions.ChildApps;
 namespace XanhNow.Security.Application.Abstractions.ChildApps.Jwt;
 
 public sealed record JwtIssueRequest(Guid UserId, string Audience, IReadOnlyCollection<string> Scopes);
-public sealed record JwtIssueResult(string AccessToken, string RefreshTokenReference, DateTimeOffset ExpiresAt);
-public sealed record JwtRefreshRequest(Guid UserId, string RefreshTokenReference);
+public sealed record JwtIssueResult(string AccessToken, string RefreshTokenReference, DateTimeOffset ExpiresAt, DateTimeOffset RefreshTokenExpiresAt, string? SessionId);
+public sealed record JwtRefreshRequest(Guid UserId, string RefreshTokenReference, string? SessionId);
 public sealed record JwtValidateResult(bool IsValid, Guid? UserId, IReadOnlyCollection<string> Roles, IReadOnlyCollection<string> Scopes, string? SessionId);
 public sealed record JwtRevokeRequest(Guid UserId, string SessionId);
 public sealed record JwtRevokeAllRequest(Guid UserId, string ReasonCode, bool IncludeCurrentSession, string? CurrentSessionId = null);

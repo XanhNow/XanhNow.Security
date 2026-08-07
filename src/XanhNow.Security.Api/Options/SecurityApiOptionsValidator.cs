@@ -43,6 +43,14 @@ public sealed class SecurityApiOptionsValidator : IValidateOptions<SecurityApiOp
             failures.Add("SecurityApi:MaxCorrelationIdLength must be between 32 and 256.");
         }
 
+        foreach (var item in options.InternalServiceApiKeys)
+        {
+            if (string.IsNullOrWhiteSpace(item.Key) || string.IsNullOrWhiteSpace(item.Value))
+            {
+                failures.Add("SecurityApi:InternalServiceApiKeys cannot contain empty service names or keys.");
+            }
+        }
+
         if (options.AnonymousRequestsPerMinute <= 0 || options.UserRequestsPerMinute <= 0 || options.ServiceRequestsPerMinute <= 0)
         {
             failures.Add("SecurityApi rate limits must be greater than zero.");

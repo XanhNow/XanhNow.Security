@@ -3,6 +3,7 @@ using XanhNow.Security.Application.Common.Requests;
 namespace XanhNow.Security.Application.Core;
 
 public sealed record AccountSecurityOperationResult(Guid OperationId, string OperationType, string Status, string CurrentStep, DateTimeOffset AcceptedAtUtc);
+public sealed record OperationStatusResult(Guid OperationId, Guid UserId, string OperationType, string Status, string CurrentStep, string? ResultCode, DateTimeOffset UpdatedAtUtc);
 public sealed record AccountStateResult(Guid UserId, string Status, DateTimeOffset ChangedAtUtc);
 public sealed record SecurityProfileResult(Guid UserId, string MaskedPhoneNumber, string Status, string DeviceTrustLevel, bool HasPasskey, bool HasSmartOtp, bool IsStale, DateTimeOffset UpdatedAtUtc);
 public sealed record SessionSummaryResult(string SessionId, Guid UserId, string Status, string? DeviceName, string? Platform, DateTimeOffset CreatedAtUtc, DateTimeOffset LastSeenAtUtc, DateTimeOffset ExpiresAtUtc);
@@ -26,6 +27,7 @@ public sealed record ConfirmPhoneChangeCommand(Guid UserId, Guid OperationId, st
 public sealed record CancelPhoneChangeCommand(Guid UserId, Guid OperationId, string ReasonCode) : ICommand<AccountSecurityOperationResult>;
 
 public sealed record GetSecurityProfileQuery(Guid UserId) : IQuery<SecurityProfileResult>;
+public sealed record GetOperationStatusQuery(Guid UserId, Guid OperationId) : IQuery<OperationStatusResult>;
 public sealed record ChangeAccountStateCommand(Guid UserId, AccountStateTargetState TargetState, string ReasonCode, string? Comment) : ICommand<AccountStateResult>;
 public sealed record DeleteOwnAccountCommand(Guid UserId, string IdempotencyKey, string CorrelationId, string? StepUpGrant) : ICommand<DeleteOwnAccountResult>, IIdempotentRequest;
 

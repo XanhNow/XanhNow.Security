@@ -150,14 +150,34 @@ internal sealed class PasskeyGrpcFacadeClient : IPasskeyClient, IDisposable
         }
     }
 
-    public ValueTask<ChildCallResult<PasskeyRevokeAllResult>> RevokeAllAsync(PasskeyRevokeAllRequest request, CancellationToken cancellationToken)
-        => ValueTask.FromResult(ChildCallResult<PasskeyRevokeAllResult>.Success(new PasskeyRevokeAllResult(0, DateTimeOffset.UtcNow)));
+    public async ValueTask<ChildCallResult<PasskeyRevokeAllResult>> RevokeAllAsync(PasskeyRevokeAllRequest request, CancellationToken cancellationToken)
+    {
+        var listed = await ListAsync(request.UserId, cancellationToken);
+        if (listed.IsFailure || listed.Value is null)
+        {
+            return ChildCallResult<PasskeyRevokeAllResult>.Failure(listed.Error ?? new ChildCallError("passkey.list_failed", "Passkey list failed before revoke-all.", true));
+        }
+
+        var revokedCount = 0;
+        foreach (var credential in listed.Value.Where(x => !x.Revoked))
+        {
+            var revoked = await RevokeAsync(request.UserId, credential.CredentialId, cancellationToken);
+            if (revoked.IsFailure || !revoked.Value)
+            {
+                return ChildCallResult<PasskeyRevokeAllResult>.Failure(revoked.Error ?? new ChildCallError("passkey.revoke_failed", "Passkey revoke failed during revoke-all.", true));
+            }
+
+            revokedCount++;
+        }
+
+        return ChildCallResult<PasskeyRevokeAllResult>.Success(new PasskeyRevokeAllResult(revokedCount, DateTimeOffset.UtcNow));
+    }
 
     public ValueTask<ChildCallResult<bool>> RenameAsync(PasskeyRenameRequest request, CancellationToken cancellationToken)
-        => ValueTask.FromResult(ChildCallResult<bool>.Success(true));
+        => ValueTask.FromResult(ChildCallResult<bool>.Failure(new ChildCallError("passkey.rename_unsupported", "Passkey provider contract does not support rename.", false)));
 
     public ValueTask<ChildCallResult<bool>> SetEnabledAsync(PasskeyStateChangeRequest request, CancellationToken cancellationToken)
-        => ValueTask.FromResult(ChildCallResult<bool>.Success(true));
+        => ValueTask.FromResult(ChildCallResult<bool>.Failure(new ChildCallError("passkey.state_unsupported", "Passkey provider contract does not support enable or disable.", false)));
 
     public void Dispose() => _channel.Dispose();
 

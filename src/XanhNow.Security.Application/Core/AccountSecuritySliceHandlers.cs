@@ -3,6 +3,7 @@ using XanhNow.Security.Application.Abstractions.Audit;
 using XanhNow.Security.Application.Abstractions.ChildApps;
 using XanhNow.Security.Application.Abstractions.ChildApps.AuthLogin;
 using XanhNow.Security.Application.Abstractions.ChildApps.Jwt;
+using XanhNow.Security.Application.Abstractions.Grant;
 using XanhNow.Security.Application.Abstractions.ChildApps.Passkey;
 using XanhNow.Security.Application.Abstractions.ChildApps.SmartOtp;
 using XanhNow.Security.Application.Abstractions.Ids;
@@ -11,6 +12,8 @@ using XanhNow.Security.Application.Abstractions.Persistence;
 using XanhNow.Security.Application.Abstractions.Time;
 using XanhNow.Security.Application.Common.Requests;
 using XanhNow.Security.Application.Common.Results;
+using XanhNow.Security.Domain.Grants;
+using XanhNow.Security.Domain.Operations;
 using XanhNow.Security.Domain.Users;
 using XanhNow.Security.Domain.ValueObjects;
 
@@ -31,6 +34,85 @@ internal static class AccountSecuritySliceMapper
         => new(session.SessionId, session.UserId, session.Status, session.DeviceName, session.Platform, session.CreatedAtUtc, session.LastSeenAtUtc, session.ExpiresAtUtc);
 }
 
+internal static class StepUpGrantVerifier
+{
+    public static async ValueTask<Result<bool>> VerifyAndConsumeAsync(
+        string? protectedGrant,
+        string expectedPurpose,
+        Guid expectedUserId,
+        IGrantProtector protector,
+        ISecurityGrantRepository grants,
+        IClock clock,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(protectedGrant))
+        {
+            return Result<bool>.Failure(Error.Authentication(SecurityErrorCodes.CallerRequired, "A valid step-up grant is required."));
+        }
+
+        var verified = await protector.VerifyAsync(protectedGrant, expectedPurpose, cancellationToken);
+        if (!verified.IsValid || verified.UserId != expectedUserId || verified.GrantId is null)
+        {
+            return Result<bool>.Failure(Error.Authentication(SecurityErrorCodes.CallerRequired, "Step-up grant is invalid."));
+        }
+
+        var grant = await grants.FindByIdAsync(verified.GrantId.Value, cancellationToken);
+        if (grant is null || grant.UserId != expectedUserId || grant.Type != SecurityGrantType.StepUpGrant || grant.Status != SecurityGrantStatus.Active)
+        {
+            return Result<bool>.Failure(Error.Authentication(SecurityErrorCodes.CallerRequired, "Step-up grant is not active."));
+        }
+
+        if (!string.Equals(grant.Purpose.Value, expectedPurpose, StringComparison.Ordinal) || grant.ExpiresAt <= clock.UtcNow)
+        {
+            return Result<bool>.Failure(Error.Authentication(SecurityErrorCodes.CallerRequired, "Step-up grant is expired or has the wrong purpose."));
+        }
+
+        grant.Consume(clock.UtcNow);
+        return Result<bool>.Success(true);
+    }
+}
+
+
+public sealed class GetOperationStatusQueryHandler : IRequestHandler<GetOperationStatusQuery, OperationStatusResult>
+{
+    private readonly ISecurityOperationRepository _operations;
+
+    public GetOperationStatusQueryHandler(ISecurityOperationRepository operations)
+    {
+        _operations = operations;
+    }
+
+    public async Task<Result<OperationStatusResult>> HandleAsync(GetOperationStatusQuery request, CancellationToken cancellationToken)
+    {
+        var operation = await _operations.FindByIdAsync(request.OperationId, cancellationToken);
+        if (operation is null)
+        {
+            return Result<OperationStatusResult>.Failure(Error.NotFound("SECURITY_OPERATION_NOT_FOUND", "Security operation was not found."));
+        }
+
+        if (operation.UserId != request.UserId)
+        {
+            return Result<OperationStatusResult>.Failure(Error.NotFound("SECURITY_OPERATION_NOT_FOUND", "Security operation was not found."));
+        }
+
+        var currentStep = operation.Steps
+            .OrderByDescending(x => x.StartedAt ?? x.CompletedAt ?? x.CreatedAt)
+            .FirstOrDefault(x => x.Status is OperationStepStatus.Running or OperationStepStatus.RetryPending or OperationStepStatus.FailedSafe)
+            ?? operation.Steps.OrderBy(x => x.CreatedAt).First();
+
+        var updatedAt = operation.TerminalAt
+            ?? operation.Steps.Select(x => x.CompletedAt ?? x.StartedAt ?? x.CreatedAt).DefaultIfEmpty(operation.CreatedAt).Max();
+
+        return Result<OperationStatusResult>.Success(new OperationStatusResult(
+            operation.Id,
+            operation.UserId,
+            operation.OperationType.Value,
+            operation.Status.ToString(),
+            currentStep.StepCode.Value,
+            currentStep.FailureCode,
+            updatedAt));
+    }
+}
 public sealed class ChangePasswordCommandHandler : CoreSliceHandler, IRequestHandler<ChangePasswordCommand, AccountSecurityOperationResult>
 {
     private readonly IAuthLoginClient _authLogin;
@@ -117,13 +199,32 @@ public sealed class ForcePasswordChangeCommandHandler : CoreSliceHandler, IReque
 
 public sealed class StartPhoneChangeCommandHandler : CoreSliceHandler, IRequestHandler<StartPhoneChangeCommand, AccountSecurityOperationResult>
 {
+    private const string StepUpPurpose = "phone.change";
     private readonly IAuthLoginClient _authLogin;
+    private readonly IGrantProtector _grantProtector;
+    private readonly ISecurityGrantRepository _grants;
+    private readonly ILocalUnitOfWork _unitOfWork;
+    private readonly IClock _clock;
 
-    public StartPhoneChangeCommandHandler(IAuthLoginClient authLogin, IAuditIntentWriter audit, IClock clock)
-        : base(audit, clock) => _authLogin = authLogin;
+    public StartPhoneChangeCommandHandler(IAuthLoginClient authLogin, IGrantProtector grantProtector, ISecurityGrantRepository grants, ILocalUnitOfWork unitOfWork, IAuditIntentWriter audit, IClock clock)
+        : base(audit, clock)
+    {
+        _authLogin = authLogin;
+        _grantProtector = grantProtector;
+        _grants = grants;
+        _unitOfWork = unitOfWork;
+        _clock = clock;
+    }
 
     public async Task<Result<AccountSecurityOperationResult>> HandleAsync(StartPhoneChangeCommand request, CancellationToken cancellationToken)
     {
+        var stepUp = await StepUpGrantVerifier.VerifyAndConsumeAsync(request.StepUpGrant, StepUpPurpose, request.UserId, _grantProtector, _grants, _clock, cancellationToken);
+        if (stepUp.IsFailure)
+        {
+            await AuditAsync(request.UserId, "phone.change.start", "blocked", stepUp.Error?.Code ?? "step_up_required", cancellationToken);
+            return Result<AccountSecurityOperationResult>.Failure(stepUp.Error!);
+        }
+
         var child = await _authLogin.StartPhoneChangeAsync(new AuthLoginPhoneChangeStartRequest(request.UserId, request.NewPhoneNumber, request.StepUpGrant, request.ReasonCode), cancellationToken);
         if (child.IsFailure || child.Value is null)
         {
@@ -132,6 +233,7 @@ public sealed class StartPhoneChangeCommandHandler : CoreSliceHandler, IRequestH
         }
 
         await AuditAsync(request.UserId, "phone.change.start", "accepted", request.ReasonCode, cancellationToken);
+        await _unitOfWork.CommitAsync(cancellationToken);
         return Result<AccountSecurityOperationResult>.Success(AccountSecuritySliceMapper.ToOperation(child.Value, Now));
     }
 }
@@ -234,9 +336,12 @@ public sealed class DeleteOwnAccountCommandHandler : CoreSliceHandler, IRequestH
     private readonly IJwtTokenClient _jwt;
     private readonly IPasskeyClient _passkey;
     private readonly ISmartOtpClient _smartOtp;
+    private readonly IGrantProtector _grantProtector;
+    private readonly ISecurityGrantRepository _grants;
     private readonly ISecurityUserRepository _users;
     private readonly IOutboxIntentWriter _outbox;
     private readonly IIdGenerator _ids;
+    private readonly IClock _clock;
     private readonly ILocalUnitOfWork _unitOfWork;
 
     public DeleteOwnAccountCommandHandler(
@@ -244,6 +349,8 @@ public sealed class DeleteOwnAccountCommandHandler : CoreSliceHandler, IRequestH
         IJwtTokenClient jwt,
         IPasskeyClient passkey,
         ISmartOtpClient smartOtp,
+        IGrantProtector grantProtector,
+        ISecurityGrantRepository grants,
         ISecurityUserRepository users,
         IOutboxIntentWriter outbox,
         IIdGenerator ids,
@@ -256,9 +363,12 @@ public sealed class DeleteOwnAccountCommandHandler : CoreSliceHandler, IRequestH
         _jwt = jwt;
         _passkey = passkey;
         _smartOtp = smartOtp;
+        _grantProtector = grantProtector;
+        _grants = grants;
         _users = users;
         _outbox = outbox;
         _ids = ids;
+        _clock = clock;
         _unitOfWork = unitOfWork;
     }
 
@@ -277,6 +387,13 @@ public sealed class DeleteOwnAccountCommandHandler : CoreSliceHandler, IRequestH
         if (string.IsNullOrWhiteSpace(request.CorrelationId))
         {
             return Result<DeleteOwnAccountResult>.Failure(Error.Validation(SecurityErrorCodes.ValidationFailed, "X-Correlation-Id header is required."));
+        }
+
+        var stepUp = await StepUpGrantVerifier.VerifyAndConsumeAsync(request.StepUpGrant, ReasonCodeValue, request.UserId, _grantProtector, _grants, _clock, cancellationToken);
+        if (stepUp.IsFailure)
+        {
+            await AuditAsync(request.UserId, "account.delete_self", "blocked", stepUp.Error?.Code ?? "step_up_required", cancellationToken);
+            return Result<DeleteOwnAccountResult>.Failure(stepUp.Error!);
         }
 
         var now = Now;
