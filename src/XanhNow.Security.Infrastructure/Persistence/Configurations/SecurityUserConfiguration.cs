@@ -25,6 +25,9 @@ internal sealed class SecurityUserConfiguration : IEntityTypeConfiguration<Secur
         builder.HasIndex(x => x.Status).HasDatabaseName("ix_security_users_status");
         builder.HasIndex(x => x.RegistrationStatus).HasDatabaseName("ix_security_users_registration_status");
         builder.HasIndex(x => x.RiskLevel).HasDatabaseName("ix_security_users_risk_level");
+        builder.ToTable(x => x.HasCheckConstraint(
+            "ck_security_users_registration_status",
+            "registration_status IN ('PendingPasskey', 'Completed')"));
         builder.Ignore(x => x.DomainEvents);
     }
 }

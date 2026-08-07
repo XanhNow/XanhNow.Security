@@ -39,7 +39,7 @@ public sealed class PasskeysController : ApiControllerBase
     [EndpointMaturity("Current", "passkeys.registration.begin")]
     public async Task<ActionResult<ApiResponse<BeginPasskeyRegistrationResponse>>> BeginRegistrationAsync(BeginPasskeyRegistrationRequest request, CancellationToken cancellationToken)
     {
-        var result = await _beginRegistration.ExecuteAsync(new BeginPasskeyRegistrationCommand(CurrentUserIdOrEmpty(), request.DisplayName), cancellationToken);
+        var result = await _beginRegistration.ExecuteAsync(new BeginPasskeyRegistrationCommand(CurrentUserIdOrEmpty(), request.DisplayName, MapDevice(request.DeviceContext)), cancellationToken);
         return FromApplicationResult(result, x => new BeginPasskeyRegistrationResponse(x.CeremonyId, x.PublicKeyOptions, x.ExpiresAtUtc));
     }
 
@@ -47,7 +47,7 @@ public sealed class PasskeysController : ApiControllerBase
     [EndpointMaturity("Current", "passkeys.registration.finish")]
     public async Task<ActionResult<ApiResponse<PasskeyStateResponse>>> FinishRegistrationAsync(FinishPasskeyRegistrationRequest request, CancellationToken cancellationToken)
     {
-        var result = await _finishRegistration.ExecuteAsync(new FinishPasskeyRegistrationCommand(CurrentUserIdOrEmpty(), request.CeremonyId, request.Credential, request.DeviceName), cancellationToken);
+        var result = await _finishRegistration.ExecuteAsync(new FinishPasskeyRegistrationCommand(CurrentUserIdOrEmpty(), request.CeremonyId, request.Credential, MapDevice(request.DeviceContext)), cancellationToken);
         return FromApplicationResult(result, MapState);
     }
 
@@ -93,4 +93,7 @@ public sealed class PasskeysController : ApiControllerBase
 
     private static PasskeyStateResponse MapState(PasskeyStateResult state)
         => new(state.PasskeyId, state.IsEnabled, state.UpdatedAtUtc);
+
+    private static DeviceContext? MapDevice(DeviceContextRequest? device)
+        => device is null ? null : new DeviceContext(device.DeviceId, device.DeviceName, device.Platform, device.IpAddress, device.UserAgent);
 }

@@ -51,6 +51,12 @@ namespace XanhNow.Security.Infrastructure.Persistence.Migrations
                 WHERE registration_status IS NULL OR registration_status = '' OR registration_status = 'Completed';
                 """);
 
+            migrationBuilder.Sql("""
+                ALTER TABLE security.security_users
+                ADD CONSTRAINT ck_security_users_registration_status
+                CHECK (registration_status IN ('PendingPasskey', 'Completed'));
+                """);
+
             migrationBuilder.CreateIndex(
                 name: "ix_security_users_registration_status",
                 schema: "security",
@@ -65,6 +71,11 @@ namespace XanhNow.Security.Infrastructure.Persistence.Migrations
                 name: "ix_security_users_registration_status",
                 schema: "security",
                 table: "security_users");
+
+            migrationBuilder.Sql("""
+                ALTER TABLE security.security_users
+                DROP CONSTRAINT IF EXISTS ck_security_users_registration_status;
+                """);
 
             migrationBuilder.DropColumn(
                 name: "passkey_registered_at_utc",
