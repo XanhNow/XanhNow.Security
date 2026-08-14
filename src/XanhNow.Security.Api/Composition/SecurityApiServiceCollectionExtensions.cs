@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using XanhNow.Security.Api.Health;
+using XanhNow.Security.Api.Diagnostics;
 using XanhNow.Security.Api.OpenApi;
 using XanhNow.Security.Api.Options;
 using XanhNow.Security.Api.Security;
@@ -47,6 +48,7 @@ public static class SecurityApiServiceCollectionExtensions
         services.AddScoped<SecurityDependencyHealthService>();
         services.AddSingleton<OpenApiInventoryService>();
         services.AddSingleton<IAuthorizationService, CallerPermissionAuthorizationService>();
+        services.AddSingleton<IApplicationExceptionReporter, LoggingApplicationExceptionReporter>();
         services.AddCoreVerticalSlices();
 
         services.AddSecurityPersistence(options =>
