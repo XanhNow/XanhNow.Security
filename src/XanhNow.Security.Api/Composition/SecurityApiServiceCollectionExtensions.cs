@@ -169,6 +169,7 @@ public static class SecurityApiServiceCollectionExtensions
         services.AddScoped<IRequestHandler<StartStepUpCommand, StepUpChallengeResult>, StartStepUpCommandHandler>();
         services.AddScoped<IRequestHandler<RevealStepUpCommand, StepUpRevealResult>, RevealStepUpCommandHandler>();
         services.AddScoped<IRequestHandler<VerifyStepUpCommand, StepUpGrantResult>, VerifyStepUpCommandHandler>();
+        services.AddScoped<IRequestHandler<CompleteLoginSmartOtpCommand, PasswordLoginResult>, CompleteLoginSmartOtpCommandHandler>();
         services.AddScoped<IRequestHandler<ChangePasswordCommand, AccountSecurityOperationResult>, ChangePasswordCommandHandler>();
         services.AddScoped<IRequestHandler<StartPasswordResetCommand, AccountSecurityOperationResult>, StartPasswordResetCommandHandler>();
         services.AddScoped<IRequestHandler<CompletePasswordResetCommand, AccountSecurityOperationResult>, CompletePasswordResetCommandHandler>();

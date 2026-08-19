@@ -20,6 +20,9 @@ internal static class CoreSliceDefaults
     public static readonly string[] DefaultScopes = ["security.user"];
     public const string DefaultAudience = "xanhnow";
     public const string RegistrationIncompleteReason = "registration_passkey_required";
+    public const string SmartOtpRequiredReason = "smart_otp_required";
+    public const string LoginSmartOtpPurpose = "login_smart_otp";
+    public const string SmartOtpMfaMethod = "smart_otp";
 }
 
 public abstract class CoreSliceHandler
@@ -81,14 +84,16 @@ public sealed class PasswordLoginCommandHandler : CoreSliceHandler, IRequestHand
     private readonly IAuthLoginClient _authLogin;
     private readonly IJwtTokenClient _jwt;
     private readonly ISecurityUserRepository _users;
+    private readonly ISecurityProfileReader _profiles;
     private readonly ILocalUnitOfWork _unitOfWork;
 
-    public PasswordLoginCommandHandler(IAuthLoginClient authLogin, IJwtTokenClient jwt, ISecurityUserRepository users, ILocalUnitOfWork unitOfWork, IAuditIntentWriter audit, IClock clock)
+    public PasswordLoginCommandHandler(IAuthLoginClient authLogin, IJwtTokenClient jwt, ISecurityUserRepository users, ISecurityProfileReader profiles, ILocalUnitOfWork unitOfWork, IAuditIntentWriter audit, IClock clock)
         : base(audit, clock)
     {
         _authLogin = authLogin;
         _jwt = jwt;
         _users = users;
+        _profiles = profiles;
         _unitOfWork = unitOfWork;
     }
 
@@ -108,6 +113,13 @@ public sealed class PasswordLoginCommandHandler : CoreSliceHandler, IRequestHand
             return Result<PasswordLoginResult>.Success(registration);
         }
 
+        var mfa = await RequireSmartOtpIfEnabledAsync(login.Value.UserId, cancellationToken);
+        if (mfa is not null)
+        {
+            await AuditAsync(login.Value.UserId, "auth.password_login", "blocked", CoreSliceDefaults.SmartOtpRequiredReason, cancellationToken);
+            return Result<PasswordLoginResult>.Success(mfa);
+        }
+
         var token = await _jwt.IssueAsync(new JwtIssueRequest(login.Value.UserId, CoreSliceDefaults.DefaultAudience, CoreSliceDefaults.DefaultScopes), cancellationToken);
         if (token.IsFailure || token.Value is null)
         {
@@ -120,6 +132,14 @@ public sealed class PasswordLoginCommandHandler : CoreSliceHandler, IRequestHand
     }
 
     internal static TokenPairResult ToTokenPair(JwtIssueResult token) => new(token.AccessToken, token.RefreshTokenReference, token.ExpiresAt, token.RefreshTokenExpiresAt, token.SessionId);
+
+    internal async ValueTask<PasswordLoginResult?> RequireSmartOtpIfEnabledAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var profile = await _profiles.FindByUserIdAsync(userId, cancellationToken);
+        return profile?.SmartOtpDeviceCount > 0
+            ? new PasswordLoginResult("MfaRequired", userId, null, new MfaChallengeResult(string.Empty, CoreSliceDefaults.SmartOtpMfaMethod, Now.AddMinutes(5)), CoreSliceDefaults.SmartOtpRequiredReason)
+            : null;
+    }
 
     internal async ValueTask<PasswordLoginResult?> EnsureRegistrationCompletedAsync(Guid userId, CancellationToken cancellationToken)
     {
@@ -343,12 +363,16 @@ public sealed class FinishPasskeyLoginCommandHandler : IRequestHandler<FinishPas
     private readonly IPasskeyClient _passkey;
     private readonly IJwtTokenClient _jwt;
     private readonly ISecurityUserRepository _users;
+    private readonly ISecurityProfileReader _profiles;
+    private readonly IClock _clock;
 
-    public FinishPasskeyLoginCommandHandler(IPasskeyClient passkey, IJwtTokenClient jwt, ISecurityUserRepository users)
+    public FinishPasskeyLoginCommandHandler(IPasskeyClient passkey, IJwtTokenClient jwt, ISecurityUserRepository users, ISecurityProfileReader profiles, IClock clock)
     {
         _passkey = passkey;
         _jwt = jwt;
         _users = users;
+        _profiles = profiles;
+        _clock = clock;
     }
 
     public async Task<Result<PasswordLoginResult>> HandleAsync(FinishPasskeyLoginCommand request, CancellationToken cancellationToken)
@@ -363,6 +387,12 @@ public sealed class FinishPasskeyLoginCommandHandler : IRequestHandler<FinishPas
         if (user is not null && !user.IsRegistrationCompleted)
         {
             return Result<PasswordLoginResult>.Success(new PasswordLoginResult("PasskeyRequired", passkey.Value.UserId, null, null, CoreSliceDefaults.RegistrationIncompleteReason));
+        }
+
+        var profile = await _profiles.FindByUserIdAsync(passkey.Value.UserId, cancellationToken);
+        if (profile?.SmartOtpDeviceCount > 0)
+        {
+            return Result<PasswordLoginResult>.Success(new PasswordLoginResult("MfaRequired", passkey.Value.UserId, null, new MfaChallengeResult(string.Empty, CoreSliceDefaults.SmartOtpMfaMethod, _clock.UtcNow.AddMinutes(5)), CoreSliceDefaults.SmartOtpRequiredReason));
         }
 
         var token = await _jwt.IssueAsync(new JwtIssueRequest(passkey.Value.UserId, CoreSliceDefaults.DefaultAudience, CoreSliceDefaults.DefaultScopes), cancellationToken);
@@ -585,5 +615,38 @@ public sealed class VerifyStepUpCommandHandler : IRequestHandler<VerifyStepUpCom
         return child.IsSuccess && child.Value is not null
             ? Result<StepUpGrantResult>.Success(new StepUpGrantResult(request.ChallengeId, $"step-up:{child.Value.UserId:N}", request.Purpose, _clock.UtcNow.AddMinutes(5)))
             : CoreSliceHandler.ChildFailure<StepUpGrantResult>(child.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Smart OTP verify failed.", true));
+    }
+}
+
+public sealed class CompleteLoginSmartOtpCommandHandler : CoreSliceHandler, IRequestHandler<CompleteLoginSmartOtpCommand, PasswordLoginResult>
+{
+    private readonly ISmartOtpClient _smartOtp;
+    private readonly IJwtTokenClient _jwt;
+
+    public CompleteLoginSmartOtpCommandHandler(ISmartOtpClient smartOtp, IJwtTokenClient jwt, IAuditIntentWriter audit, IClock clock)
+        : base(audit, clock)
+    {
+        _smartOtp = smartOtp;
+        _jwt = jwt;
+    }
+
+    public async Task<Result<PasswordLoginResult>> HandleAsync(CompleteLoginSmartOtpCommand request, CancellationToken cancellationToken)
+    {
+        var verified = await _smartOtp.VerifyAsync(new SmartOtpVerifyRequest(request.UserId, request.ChallengeId, request.DeviceId, request.Purpose, request.ExternalTransactionId, request.TransactionDigest, new SensitiveString(request.Otp)), cancellationToken);
+        if (verified.IsFailure || verified.Value is null || verified.Value.UserId != request.UserId)
+        {
+            await AuditAsync(request.UserId, "auth.login_smart_otp", "failed", verified.Error?.Code ?? "smart_otp_verify_failed", cancellationToken);
+            return ChildFailure<PasswordLoginResult>(verified.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Smart OTP login verify failed.", true));
+        }
+
+        var token = await _jwt.IssueAsync(new JwtIssueRequest(request.UserId, CoreSliceDefaults.DefaultAudience, CoreSliceDefaults.DefaultScopes), cancellationToken);
+        if (token.IsFailure || token.Value is null)
+        {
+            await AuditAsync(request.UserId, "auth.login_smart_otp", "partial", token.Error?.Code ?? "jwt_issue_failed", cancellationToken);
+            return ChildFailure<PasswordLoginResult>(token.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "JWT issue failed.", true));
+        }
+
+        await AuditAsync(request.UserId, "auth.login_smart_otp", "succeeded", "login_completed", cancellationToken);
+        return Result<PasswordLoginResult>.Success(new PasswordLoginResult("Completed", request.UserId, PasswordLoginCommandHandler.ToTokenPair(token.Value), null, null));
     }
 }

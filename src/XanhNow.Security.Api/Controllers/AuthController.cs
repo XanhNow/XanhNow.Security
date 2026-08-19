@@ -6,6 +6,7 @@ using XanhNow.Security.Application.Core;
 using XanhNow.Security.Contracts.Common.Enums;
 using XanhNow.Security.Contracts.Common.Responses;
 using XanhNow.Security.Contracts.V1.Auth;
+using XanhNow.Security.Contracts.V1.SmartOtp;
 
 namespace XanhNow.Security.Api.Controllers;
 
@@ -13,6 +14,8 @@ namespace XanhNow.Security.Api.Controllers;
 [Route("api/v1/auth")]
 public sealed class AuthController : ApiControllerBase
 {
+    private const string LoginSmartOtpPurpose = "login_smart_otp";
+
     private readonly ApplicationExecutor<RegisterCommand, RegisterResult> _register;
     private readonly ApplicationExecutor<PasswordLoginCommand, PasswordLoginResult> _passwordLogin;
     private readonly ApplicationExecutor<BeginPasskeyLoginCommand, BeginPasskeyLoginResult> _beginPasskeyLogin;
@@ -21,6 +24,9 @@ public sealed class AuthController : ApiControllerBase
     private readonly ApplicationExecutor<FinishRegistrationPasskeyCommand, FinishRegistrationPasskeyResult> _finishRegistrationPasskey;
     private readonly ApplicationExecutor<BeginLoginMfaCommand, LoginMfaChallengeResult> _beginLoginMfa;
     private readonly ApplicationExecutor<CompleteLoginMfaCommand, ProtectedGrantResult> _completeLoginMfa;
+    private readonly ApplicationExecutor<StartStepUpCommand, StepUpChallengeResult> _startSmartOtpLogin;
+    private readonly ApplicationExecutor<RevealStepUpCommand, StepUpRevealResult> _revealSmartOtpLogin;
+    private readonly ApplicationExecutor<CompleteLoginSmartOtpCommand, PasswordLoginResult> _completeSmartOtpLogin;
     private readonly ApplicationExecutor<CompletePasskeyLoginWithGrantCommand, ProtectedGrantResult> _completePasskeyLoginWithGrant;
 
     public AuthController(
@@ -32,6 +38,9 @@ public sealed class AuthController : ApiControllerBase
         ApplicationExecutor<FinishRegistrationPasskeyCommand, FinishRegistrationPasskeyResult> finishRegistrationPasskey,
         ApplicationExecutor<BeginLoginMfaCommand, LoginMfaChallengeResult> beginLoginMfa,
         ApplicationExecutor<CompleteLoginMfaCommand, ProtectedGrantResult> completeLoginMfa,
+        ApplicationExecutor<StartStepUpCommand, StepUpChallengeResult> startSmartOtpLogin,
+        ApplicationExecutor<RevealStepUpCommand, StepUpRevealResult> revealSmartOtpLogin,
+        ApplicationExecutor<CompleteLoginSmartOtpCommand, PasswordLoginResult> completeSmartOtpLogin,
         ApplicationExecutor<CompletePasskeyLoginWithGrantCommand, ProtectedGrantResult> completePasskeyLoginWithGrant)
     {
         _register = register;
@@ -42,6 +51,9 @@ public sealed class AuthController : ApiControllerBase
         _finishRegistrationPasskey = finishRegistrationPasskey;
         _beginLoginMfa = beginLoginMfa;
         _completeLoginMfa = completeLoginMfa;
+        _startSmartOtpLogin = startSmartOtpLogin;
+        _revealSmartOtpLogin = revealSmartOtpLogin;
+        _completeSmartOtpLogin = completeSmartOtpLogin;
         _completePasskeyLoginWithGrant = completePasskeyLoginWithGrant;
     }
 
@@ -100,6 +112,33 @@ public sealed class AuthController : ApiControllerBase
     }
 
     [AllowAnonymous]
+    [HttpPost("login/smart-otp/start")]
+    [EndpointMaturity("Current", "auth.login.smart_otp.start")]
+    public async Task<ActionResult<ApiResponse<StepUpChallengeResponse>>> StartSmartOtpLoginAsync(StartSmartOtpLoginRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _startSmartOtpLogin.ExecuteAsync(new StartStepUpCommand(request.UserId, request.DeviceId, LoginSmartOtpPurpose, request.ExternalTransactionId, request.TransactionDigest, request.ExpiresAtUtc), cancellationToken);
+        return FromApplicationResult(result, MapStepUpChallenge);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("login/smart-otp/reveal")]
+    [EndpointMaturity("Current", "auth.login.smart_otp.reveal")]
+    public async Task<ActionResult<ApiResponse<StepUpRevealResponse>>> RevealSmartOtpLoginAsync(RevealSmartOtpLoginRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _revealSmartOtpLogin.ExecuteAsync(new RevealStepUpCommand(request.UserId, request.ChallengeId, request.DeviceId, request.DeviceKeyId, request.Purpose, request.ExternalTransactionId, request.TransactionDigest, request.RevealRequestId, request.IssuedAtUtc, request.ProofExpiresAtUtc, request.DeviceSignature), cancellationToken);
+        return FromApplicationResult(result, x => new StepUpRevealResponse(x.ChallengeId, x.OtpCode, x.ExpiresAtUtc, x.RevealCount, x.ReleasedAtUtc));
+    }
+
+    [AllowAnonymous]
+    [HttpPost("login/smart-otp/complete")]
+    [EndpointMaturity("Current", "auth.login.smart_otp.complete")]
+    public async Task<ActionResult<ApiResponse<PasswordLoginResponse>>> CompleteSmartOtpLoginAsync(CompleteSmartOtpLoginRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _completeSmartOtpLogin.ExecuteAsync(new CompleteLoginSmartOtpCommand(request.UserId, request.ChallengeId, request.DeviceId, request.Purpose, request.ExternalTransactionId, request.TransactionDigest, request.Otp, MapDevice(request.DeviceContext)), cancellationToken);
+        return FromApplicationResult(result, MapLogin);
+    }
+
+    [AllowAnonymous]
     [HttpPost("login/passkey/begin")]
     [EndpointMaturity("Current", "auth.login.passkey.begin")]
     public async Task<ActionResult<ApiResponse<PasskeyLoginBeginResponse>>> BeginPasskeyLoginAsync(PasskeyLoginBeginRequest request, CancellationToken cancellationToken)
@@ -136,6 +175,9 @@ public sealed class AuthController : ApiControllerBase
             result.Tokens is null ? null : new TokenPairResponse(result.Tokens.AccessToken, result.Tokens.RefreshToken, result.Tokens.AccessTokenExpiresAtUtc, result.Tokens.RefreshTokenExpiresAtUtc, result.Tokens.TokenType),
             result.Mfa is null ? null : new MfaChallengeResponse(result.Mfa.ChallengeId, result.Mfa.Method, result.Mfa.ExpiresAtUtc),
             result.ReasonCode);
+
+    private static StepUpChallengeResponse MapStepUpChallenge(StepUpChallengeResult result)
+        => new(result.ChallengeId, result.ExternalUserId, result.DeviceId, result.DeviceKeyId, result.Purpose, result.ExternalTransactionId, result.TransactionDigest, result.ExpiresAtUtc, result.CodeLength, result.MaxAttempts);
 
     private static ProtectedGrantResponse MapGrant(ProtectedGrantResult result)
         => new(result.GrantId, result.Grant, result.GrantType, result.Audience, result.Purpose, result.ExpiresAtUtc);

@@ -52,7 +52,7 @@ public sealed class CoreSliceHandlerTests
         var jwt = new FakeJwtTokenClient { IssueResult = IssuedToken("access", "refresh-ref", "session-1") };
         var users = new FakeSecurityUserRepository();
         await users.AddAsync(SecurityUser.Create(userId, Now), CancellationToken.None);
-        var handler = new PasswordLoginCommandHandler(authLogin, jwt, users, new FakeUnitOfWork(), new FakeAuditIntentWriter(), new FixedClock());
+        var handler = new PasswordLoginCommandHandler(authLogin, jwt, users, new FakeSecurityProfileStore(), new FakeUnitOfWork(), new FakeAuditIntentWriter(), new FixedClock());
 
         var result = await handler.HandleAsync(new PasswordLoginCommand("0900000001", "P@ssw0rd!", null), CancellationToken.None);
 
@@ -64,6 +64,27 @@ public sealed class CoreSliceHandlerTests
     }
 
     [Fact]
+    public async Task Password_login_requires_smart_otp_when_profile_has_bound_device()
+    {
+        var userId = Guid.Parse("bcbcbcbc-bcbc-bcbc-bcbc-bcbcbcbcbcbc");
+        var authLogin = new FakeAuthLoginClient { PasswordResult = new AuthLoginPasswordResult(userId, "pwd") };
+        var jwt = new FakeJwtTokenClient { IssueResult = IssuedToken("access", "refresh-ref", "session-1") };
+        var users = new FakeSecurityUserRepository();
+        var profiles = new FakeSecurityProfileStore();
+        await users.AddAsync(SecurityUser.Create(userId, Now), CancellationToken.None);
+        await profiles.AddAsync(SecurityProfile.Create(userId, 1, 1, true, Now), CancellationToken.None);
+        var handler = new PasswordLoginCommandHandler(authLogin, jwt, users, profiles, new FakeUnitOfWork(), new FakeAuditIntentWriter(), new FixedClock());
+
+        var result = await handler.HandleAsync(new PasswordLoginCommand("0900000001", "P@ssw0rd!", null), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("MfaRequired", result.Value!.State);
+        Assert.Equal("smart_otp_required", result.Value.ReasonCode);
+        Assert.Equal("smart_otp", result.Value.Mfa?.Method);
+        Assert.Null(result.Value.Tokens);
+        Assert.Null(jwt.LastIssueRequest);
+    }
+    [Fact]
     public async Task Password_login_requires_completed_registration_before_jwt_issue()
     {
         var userId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
@@ -71,7 +92,7 @@ public sealed class CoreSliceHandlerTests
         var jwt = new FakeJwtTokenClient { IssueResult = IssuedToken("access", "refresh-ref", "session-1") };
         var users = new FakeSecurityUserRepository();
         await users.AddAsync(SecurityUser.CreatePendingPasskey(userId, Now), CancellationToken.None);
-        var handler = new PasswordLoginCommandHandler(authLogin, jwt, users, new FakeUnitOfWork(), new FakeAuditIntentWriter(), new FixedClock());
+        var handler = new PasswordLoginCommandHandler(authLogin, jwt, users, new FakeSecurityProfileStore(), new FakeUnitOfWork(), new FakeAuditIntentWriter(), new FixedClock());
 
         var result = await handler.HandleAsync(new PasswordLoginCommand("0900000001", "P@ssw0rd!", null), CancellationToken.None);
 
@@ -89,7 +110,7 @@ public sealed class CoreSliceHandlerTests
         var jwt = new FakeJwtTokenClient { IssueResult = IssuedToken("access", "refresh-ref", "session-1") };
         var users = new FakeSecurityUserRepository();
         var unitOfWork = new FakeUnitOfWork();
-        var handler = new PasswordLoginCommandHandler(authLogin, jwt, users, unitOfWork, new FakeAuditIntentWriter(), new FixedClock());
+        var handler = new PasswordLoginCommandHandler(authLogin, jwt, users, new FakeSecurityProfileStore(), unitOfWork, new FakeAuditIntentWriter(), new FixedClock());
 
         var result = await handler.HandleAsync(new PasswordLoginCommand("0900000001", "P@ssw0rd!", null), CancellationToken.None);
 
@@ -126,13 +147,13 @@ public sealed class CoreSliceHandlerTests
 
         var register = await new RegisterCommandHandler(authLogin, users, unitOfWork, audit, new FixedClock())
             .HandleAsync(new RegisterCommand("0900000001", "P@ssw0rd!", deviceContext), CancellationToken.None);
-        var blockedLogin = await new PasswordLoginCommandHandler(authLogin, jwt, users, unitOfWork, audit, new FixedClock())
+        var blockedLogin = await new PasswordLoginCommandHandler(authLogin, jwt, users, new FakeSecurityProfileStore(), unitOfWork, audit, new FixedClock())
             .HandleAsync(new PasswordLoginCommand("0900000001", "P@ssw0rd!", deviceContext), CancellationToken.None);
         var begin = await new BeginRegistrationPasskeyCommandHandler(passkey, users, new FixedClock())
             .HandleAsync(new BeginRegistrationPasskeyCommand(userId, "Phone passkey", deviceContext), CancellationToken.None);
         var finish = await new FinishRegistrationPasskeyCommandHandler(passkey, users, profiles, unitOfWork, new FixedClock())
             .HandleAsync(new FinishRegistrationPasskeyCommand(userId, "ceremony-1", System.Text.Json.JsonDocument.Parse("""{"id":"credential-1"}""").RootElement.Clone(), deviceContext), CancellationToken.None);
-        var completedLogin = await new PasswordLoginCommandHandler(authLogin, jwt, users, unitOfWork, audit, new FixedClock())
+        var completedLogin = await new PasswordLoginCommandHandler(authLogin, jwt, users, new FakeSecurityProfileStore(), unitOfWork, audit, new FixedClock())
             .HandleAsync(new PasswordLoginCommand("0900000001", "P@ssw0rd!", deviceContext), CancellationToken.None);
 
         Assert.True(register.IsSuccess);
