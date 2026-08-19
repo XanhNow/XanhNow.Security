@@ -14,6 +14,7 @@ public sealed record BeginSmartOtpEnrollmentResponse(
     string EnrollmentId,
     [property: SensitiveData("smart-otp-server-challenge")] string ServerChallenge,
     int ChallengeFormatVersion,
+    DateTimeOffset CreatedAtUtc,
     DateTimeOffset ExpiresAtUtc,
     string Status);
 

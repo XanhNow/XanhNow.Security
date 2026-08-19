@@ -33,7 +33,7 @@ public sealed record FinishRegistrationPasskeyCommand(Guid UserId, string Ceremo
 public sealed record FinishRegistrationPasskeyResult(Guid UserId, string RegistrationStatus, DateTimeOffset CompletedAtUtc);
 
 public sealed record BeginSmartOtpEnrollmentCommand(Guid UserId, string DeviceName, string Platform, string AppInstanceIdHash, string KeyAlgorithm, string CandidatePublicKeySpki, string CandidatePublicKeyThumbprint) : ICommand<BeginSmartOtpEnrollmentResult>;
-public sealed record BeginSmartOtpEnrollmentResult(string EnrollmentId, string ServerChallenge, int ChallengeFormatVersion, DateTimeOffset ExpiresAtUtc, string Status);
+public sealed record BeginSmartOtpEnrollmentResult(string EnrollmentId, string ServerChallenge, int ChallengeFormatVersion, DateTimeOffset CreatedAtUtc, DateTimeOffset ExpiresAtUtc, string Status);
 public sealed record ConfirmSmartOtpEnrollmentCommand(Guid UserId, string EnrollmentId, string ClientNonce, string DeviceSignature) : ICommand<SmartOtpDeviceStateResult>;
 public sealed record SmartOtpDeviceStateResult(string DeviceId, string DeviceKeyId, string Status, bool IsEnabled, DateTimeOffset UpdatedAtUtc);
 public sealed record StartStepUpCommand(Guid UserId, string Purpose, string TransactionDigest, DateTimeOffset ExpiresAtUtc) : ICommand<StepUpChallengeResult>;

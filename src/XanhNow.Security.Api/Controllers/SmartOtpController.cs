@@ -38,7 +38,7 @@ public sealed class SmartOtpController : ApiControllerBase
     public async Task<ActionResult<ApiResponse<BeginSmartOtpEnrollmentResponse>>> BeginEnrollmentAsync(BeginSmartOtpEnrollmentRequest request, CancellationToken cancellationToken)
     {
         var result = await _beginEnrollment.ExecuteAsync(new BeginSmartOtpEnrollmentCommand(CurrentUserIdOrEmpty(), request.DeviceName, request.Platform, request.AppInstanceIdHash, request.KeyAlgorithm, request.CandidatePublicKeySpki, request.CandidatePublicKeyThumbprint), cancellationToken);
-        return FromApplicationResult(result, x => new BeginSmartOtpEnrollmentResponse(x.EnrollmentId, x.ServerChallenge, x.ChallengeFormatVersion, x.ExpiresAtUtc, x.Status));
+        return FromApplicationResult(result, x => new BeginSmartOtpEnrollmentResponse(x.EnrollmentId, x.ServerChallenge, x.ChallengeFormatVersion, x.CreatedAtUtc, x.ExpiresAtUtc, x.Status));
     }
 
     [HttpPost("devices/enroll/confirm")]
