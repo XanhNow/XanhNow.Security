@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using XanhNow.Security.Application.Abstractions.Audit;
 using XanhNow.Security.Application.Abstractions.ChildApps;
 using XanhNow.Security.Application.Abstractions.ChildApps.AuthLogin;
@@ -255,7 +257,7 @@ public sealed class CoreSliceHandlerTests
                 Now,
                 "device-1",
                 "+84900000000",
-                AuthenticatedUserContexts.HashPhoneNumberForBinding("+84900000000")),
+                HashPhoneNumberForBinding("+84900000000")),
             CancellationToken.None);
 
         var result = await new BeginPasskeyLoginCommandHandler(passkey, users, new FixedClock())
@@ -440,6 +442,21 @@ public sealed class CoreSliceHandlerTests
     private sealed class FixedClock : IClock
     {
         public DateTimeOffset UtcNow => Now;
+    }
+
+    private static string HashPhoneNumberForBinding(string phoneNumber)
+    {
+        var normalized = phoneNumber.Trim().Replace(" ", string.Empty, StringComparison.Ordinal).Replace("-", string.Empty, StringComparison.Ordinal);
+        if (normalized.StartsWith("84", StringComparison.Ordinal))
+        {
+            normalized = "+" + normalized;
+        }
+        else if (normalized.StartsWith("0", StringComparison.Ordinal))
+        {
+            normalized = "+84" + normalized[1..];
+        }
+
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized))).ToLowerInvariant();
     }
 
     private sealed class FakeAuditIntentWriter : IAuditIntentWriter
