@@ -499,6 +499,16 @@ namespace XanhNow.Security.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("registration_completed_at_utc");
 
+                    b.Property<string>("RegistrationDeviceId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("registration_device_id");
+
+                    b.Property<string>("RegistrationPhoneNumberHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("registration_phone_number_hash");
+
                     b.Property<string>("RegistrationStatus")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -532,6 +542,11 @@ namespace XanhNow.Security.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("RegistrationStatus")
                         .HasDatabaseName("ix_security_users_registration_status");
+
+                    b.HasIndex("RegistrationDeviceId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_security_users_registration_device_id")
+                        .HasFilter("registration_device_id IS NOT NULL");
 
                     b.HasIndex("RiskLevel")
                         .HasDatabaseName("ix_security_users_risk_level");

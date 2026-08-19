@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Security.Cryptography;
+using System.Text;
 using XanhNow.Security.Application.Abstractions.Audit;
 using XanhNow.Security.Application.Abstractions.ChildApps;
 using XanhNow.Security.Application.Abstractions.ChildApps.AuthLogin;
@@ -10,6 +12,7 @@ using XanhNow.Security.Application.Abstractions.Time;
 using XanhNow.Security.Application.Common.ChildApps;
 using XanhNow.Security.Application.Common.Requests;
 using XanhNow.Security.Application.Common.Results;
+using XanhNow.Security.Domain.Common;
 using XanhNow.Security.Domain.Profiles;
 using XanhNow.Security.Domain.Users;
 
@@ -23,6 +26,8 @@ internal static class CoreSliceDefaults
     public const string SmartOtpRequiredReason = "smart_otp_required";
     public const string LoginSmartOtpPurpose = "login_smart_otp";
     public const string SmartOtpMfaMethod = "smart_otp";
+    public const string AppInstallPhoneConflictReason = "app_install_phone_conflict";
+    public const string AppInstallPhoneConflictCode = "security.app_install_phone_conflict";
 }
 
 public abstract class CoreSliceHandler
@@ -60,6 +65,22 @@ public sealed class RegisterCommandHandler : CoreSliceHandler, IRequestHandler<R
 
     public async Task<Result<RegisterResult>> HandleAsync(RegisterCommand request, CancellationToken cancellationToken)
     {
+        var registrationDeviceId = NormalizeRegistrationDeviceId(request.DeviceContext?.DeviceId);
+        var registrationPhoneHash = HashPhoneNumber(request.PhoneNumber);
+
+        if (registrationDeviceId is not null)
+        {
+            var existingDeviceUser = await _users.FindByRegistrationDeviceIdAsync(registrationDeviceId, cancellationToken);
+            if (existingDeviceUser is not null &&
+                !string.Equals(existingDeviceUser.RegistrationPhoneNumberHash, registrationPhoneHash, StringComparison.Ordinal))
+            {
+                await AuditAsync(existingDeviceUser.Id, "auth.register", "blocked", CoreSliceDefaults.AppInstallPhoneConflictReason, cancellationToken);
+                return Result<RegisterResult>.Failure(Error.Conflict(
+                    CoreSliceDefaults.AppInstallPhoneConflictCode,
+                    "This app installation is already registered with another phone number."));
+            }
+        }
+
         var child = await _authLogin.RegisterAsync(new AuthLoginRegisterRequest(request.PhoneNumber, new SensitiveString(request.Password), request.DeviceContext?.DeviceName ?? "unknown-device"), cancellationToken);
         if (child.IsFailure || child.Value is null)
         {
@@ -70,12 +91,52 @@ public sealed class RegisterCommandHandler : CoreSliceHandler, IRequestHandler<R
         var existing = await _users.FindByIdAsync(child.Value.UserId, cancellationToken);
         if (existing is null)
         {
-            await _users.AddAsync(SecurityUser.CreatePendingPasskey(child.Value.UserId, Now), cancellationToken);
+            await _users.AddAsync(SecurityUser.CreatePendingPasskey(child.Value.UserId, Now, registrationDeviceId, registrationPhoneHash), cancellationToken);
+        }
+        else if (registrationDeviceId is not null)
+        {
+            try
+            {
+                existing.BindRegistrationDevice(registrationDeviceId, registrationPhoneHash, Now);
+            }
+            catch (DomainException ex)
+            {
+                await AuditAsync(existing.Id, "auth.register", "blocked", CoreSliceDefaults.AppInstallPhoneConflictReason, cancellationToken);
+                return Result<RegisterResult>.Failure(Error.Conflict(CoreSliceDefaults.AppInstallPhoneConflictCode, ex.Message));
+            }
         }
 
         await AuditAsync(child.Value.UserId, "auth.register", "succeeded", "password_registered_passkey_required", cancellationToken);
         await _unitOfWork.CommitAsync(cancellationToken);
         return Result<RegisterResult>.Success(new RegisterResult(child.Value.UserId, "Active", UserRegistrationStatus.PendingPasskey.ToString(), Now));
+    }
+
+    private static string? NormalizeRegistrationDeviceId(string? deviceId)
+    {
+        var normalized = deviceId?.Trim();
+        return string.IsNullOrEmpty(normalized) ? null : normalized;
+    }
+
+    private static string HashPhoneNumber(string phoneNumber)
+    {
+        var normalized = NormalizePhoneNumberForBinding(phoneNumber);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized))).ToLowerInvariant();
+    }
+
+    private static string NormalizePhoneNumberForBinding(string phoneNumber)
+    {
+        var normalized = phoneNumber.Trim().Replace(" ", string.Empty, StringComparison.Ordinal).Replace("-", string.Empty, StringComparison.Ordinal);
+        if (normalized.StartsWith("+", StringComparison.Ordinal))
+        {
+            return normalized;
+        }
+
+        if (normalized.StartsWith("84", StringComparison.Ordinal))
+        {
+            return "+" + normalized;
+        }
+
+        return normalized.StartsWith("0", StringComparison.Ordinal) ? "+84" + normalized[1..] : normalized;
     }
 }
 

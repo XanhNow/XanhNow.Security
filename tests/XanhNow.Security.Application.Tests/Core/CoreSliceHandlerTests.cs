@@ -40,8 +40,38 @@ public sealed class CoreSliceHandlerTests
         Assert.Equal(UserRegistrationStatus.PendingPasskey.ToString(), result.Value.RegistrationStatus);
         Assert.Equal("0900000000", authLogin.LastRegisterRequest?.PhoneNumber);
         Assert.True(users.Contains(userId));
+        Assert.Equal("device-1", (await users.FindByIdAsync(userId, CancellationToken.None))!.RegistrationDeviceId);
+        Assert.NotNull((await users.FindByIdAsync(userId, CancellationToken.None))!.RegistrationPhoneNumberHash);
         Assert.Equal(1, unitOfWork.CommitCount);
         Assert.Contains(audit.Intents, x => x.Action == "auth.register" && x.Outcome == "succeeded");
+    }
+
+    [Fact]
+    public async Task Register_rejects_different_phone_number_for_same_app_installation()
+    {
+        var firstUserId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var secondUserId = Guid.Parse("abababab-abab-abab-abab-abababababab");
+        var authLogin = new FakeAuthLoginClient { RegisterResult = new AuthLoginRegisterResult(firstUserId) };
+        var users = new FakeSecurityUserRepository();
+        var unitOfWork = new FakeUnitOfWork();
+        var audit = new FakeAuditIntentWriter();
+        var handler = new RegisterCommandHandler(authLogin, users, unitOfWork, audit, new FixedClock());
+
+        var first = await handler.HandleAsync(
+            new RegisterCommand("+84900000000", "P@ssw0rd!", new DeviceContext("device-1", "Phone", "Android", null, null)),
+            CancellationToken.None);
+
+        authLogin.RegisterResult = new AuthLoginRegisterResult(secondUserId);
+        var second = await handler.HandleAsync(
+            new RegisterCommand("+84900000001", "P@ssw0rd!", new DeviceContext("device-1", "Phone", "Android", null, null)),
+            CancellationToken.None);
+
+        Assert.True(first.IsSuccess);
+        Assert.True(second.IsFailure);
+        Assert.Equal("security.app_install_phone_conflict", second.Error?.Code);
+        Assert.Equal(1, authLogin.RegisterCallCount);
+        Assert.Equal(1, unitOfWork.CommitCount);
+        Assert.Contains(audit.Intents, x => x.Action == "auth.register" && x.Outcome == "blocked" && x.ReasonCode == "app_install_phone_conflict");
     }
 
     [Fact]
@@ -414,6 +444,9 @@ public sealed class CoreSliceHandlerTests
         public ValueTask<SecurityUser?> FindByIdAsync(Guid userId, CancellationToken cancellationToken)
             => ValueTask.FromResult(_users.GetValueOrDefault(userId));
 
+        public ValueTask<SecurityUser?> FindByRegistrationDeviceIdAsync(string registrationDeviceId, CancellationToken cancellationToken)
+            => ValueTask.FromResult(_users.Values.SingleOrDefault(x => x.RegistrationDeviceId == registrationDeviceId));
+
         public ValueTask AddAsync(SecurityUser user, CancellationToken cancellationToken)
         {
             _users[user.Id] = user;
@@ -507,15 +540,17 @@ public sealed class CoreSliceHandlerTests
 
     private sealed class FakeAuthLoginClient : IAuthLoginClient
     {
-        public AuthLoginRegisterResult RegisterResult { get; init; } = new(Guid.NewGuid());
+        public AuthLoginRegisterResult RegisterResult { get; set; } = new(Guid.NewGuid());
         public AuthLoginPasswordResult PasswordResult { get; init; } = new(Guid.NewGuid(), "pwd");
         public AuthLoginAccountStatusResult AccountStatusResult { get; init; } = new(Guid.NewGuid(), "+849******00", "Active", Now);
+        public int RegisterCallCount { get; private set; }
         public AuthLoginRegisterRequest? LastRegisterRequest { get; private set; }
         public AuthLoginPhoneChangeStartRequest? LastPhoneChangeStartRequest { get; private set; }
         public AuthLoginAccountStateChangeRequest? LastAccountStateChangeRequest { get; private set; }
 
         public ValueTask<ChildCallResult<AuthLoginRegisterResult>> RegisterAsync(AuthLoginRegisterRequest request, CancellationToken cancellationToken)
         {
+            RegisterCallCount++;
             LastRegisterRequest = request;
             return ValueTask.FromResult(ChildCallResult<AuthLoginRegisterResult>.Success(RegisterResult));
         }
