@@ -16,6 +16,9 @@ internal sealed class SecurityUserRepository : ISecurityUserRepository
     public async ValueTask<SecurityUser?> FindByRegistrationDeviceIdAsync(string registrationDeviceId, CancellationToken cancellationToken)
         => await _db.SecurityUsers.SingleOrDefaultAsync(x => x.RegistrationDeviceId == registrationDeviceId, cancellationToken);
 
+    public async ValueTask<SecurityUser?> FindByRegistrationPhoneNumberHashAsync(string registrationPhoneNumberHash, CancellationToken cancellationToken)
+        => await _db.SecurityUsers.SingleOrDefaultAsync(x => x.RegistrationPhoneNumberHash == registrationPhoneNumberHash, cancellationToken);
+
     public async ValueTask AddAsync(SecurityUser user, CancellationToken cancellationToken)
         => await _db.SecurityUsers.AddAsync(user, cancellationToken);
 }

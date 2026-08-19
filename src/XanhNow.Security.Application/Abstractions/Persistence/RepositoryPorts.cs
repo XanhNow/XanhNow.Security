@@ -14,6 +14,7 @@ public interface ISecurityUserRepository
 {
     ValueTask<SecurityUser?> FindByIdAsync(Guid userId, CancellationToken cancellationToken);
     ValueTask<SecurityUser?> FindByRegistrationDeviceIdAsync(string registrationDeviceId, CancellationToken cancellationToken);
+    ValueTask<SecurityUser?> FindByRegistrationPhoneNumberHashAsync(string registrationPhoneNumberHash, CancellationToken cancellationToken);
     ValueTask AddAsync(SecurityUser user, CancellationToken cancellationToken);
 }
 
