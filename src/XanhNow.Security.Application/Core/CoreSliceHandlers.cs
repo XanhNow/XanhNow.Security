@@ -26,6 +26,7 @@ internal static class CoreSliceDefaults
     public const string SmartOtpRequiredReason = "smart_otp_required";
     public const string LoginSmartOtpPurpose = "login_smart_otp";
     public const string SmartOtpMfaMethod = "smart_otp";
+    public static readonly TimeSpan SmartOtpChallengeLifetime = TimeSpan.FromSeconds(30);
     public const string AppInstallPhoneConflictReason = "app_install_phone_conflict";
     public const string AppInstallPhoneConflictCode = "security.app_install_phone_conflict";
 }
@@ -230,7 +231,7 @@ public sealed class PasswordLoginCommandHandler : CoreSliceHandler, IRequestHand
     {
         var profile = await _profiles.FindByUserIdAsync(userId, cancellationToken);
         return profile?.SmartOtpDeviceCount > 0
-            ? new PasswordLoginResult("MfaRequired", userId, null, new MfaChallengeResult(string.Empty, CoreSliceDefaults.SmartOtpMfaMethod, Now.AddMinutes(5)), CoreSliceDefaults.SmartOtpRequiredReason, identity)
+            ? new PasswordLoginResult("MfaRequired", userId, null, new MfaChallengeResult(string.Empty, CoreSliceDefaults.SmartOtpMfaMethod, Now.Add(CoreSliceDefaults.SmartOtpChallengeLifetime)), CoreSliceDefaults.SmartOtpRequiredReason, identity)
             : null;
     }
 
@@ -486,7 +487,7 @@ public sealed class FinishPasskeyLoginCommandHandler : IRequestHandler<FinishPas
         var profile = await _profiles.FindByUserIdAsync(passkey.Value.UserId, cancellationToken);
         if (profile?.SmartOtpDeviceCount > 0)
         {
-            return Result<PasswordLoginResult>.Success(new PasswordLoginResult("MfaRequired", passkey.Value.UserId, null, new MfaChallengeResult(string.Empty, CoreSliceDefaults.SmartOtpMfaMethod, _clock.UtcNow.AddMinutes(5)), CoreSliceDefaults.SmartOtpRequiredReason, identity));
+            return Result<PasswordLoginResult>.Success(new PasswordLoginResult("MfaRequired", passkey.Value.UserId, null, new MfaChallengeResult(string.Empty, CoreSliceDefaults.SmartOtpMfaMethod, _clock.UtcNow.Add(CoreSliceDefaults.SmartOtpChallengeLifetime)), CoreSliceDefaults.SmartOtpRequiredReason, identity));
         }
 
         var token = await _jwt.IssueAsync(new JwtIssueRequest(passkey.Value.UserId, CoreSliceDefaults.DefaultAudience, CoreSliceDefaults.DefaultScopes), cancellationToken);
