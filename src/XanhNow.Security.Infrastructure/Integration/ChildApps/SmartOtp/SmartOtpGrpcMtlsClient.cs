@@ -14,6 +14,9 @@ namespace XanhNow.Security.Infrastructure.Integration.ChildApps.SmartOtp;
 
 internal sealed class SmartOtpGrpcMtlsClient : ISmartOtpClient, IDisposable
 {
+    private const string LoginSmartOtpPurpose = "login_smart_otp";
+    private const string LoginMfaPolicyCode = "LOGIN_MFA";
+
     private readonly ChildAppClientOptions options;
     private readonly GrpcChannel channel;
     private readonly SmartOtpGrpc.SmartOtpProvider.SmartOtpProviderClient client;
@@ -102,7 +105,7 @@ internal sealed class SmartOtpGrpcMtlsClient : ISmartOtpClient, IDisposable
                 DeviceId = request.DeviceId,
                 Purpose = request.Purpose,
                 ExternalTransactionId = request.ExternalTransactionId,
-                PolicyCode = request.Purpose,
+                PolicyCode = ResolvePolicyCode(request.Purpose),
                 TransactionDigest = ByteString.CopyFrom(Encoding.UTF8.GetBytes(request.TransactionDigest ?? string.Empty)),
                 Metadata = NewMetadata("smart-otp-challenge-create")
             }, cancellationToken: cancellationToken).ResponseAsync.ConfigureAwait(false);
@@ -260,6 +263,13 @@ internal sealed class SmartOtpGrpcMtlsClient : ISmartOtpClient, IDisposable
         }
 
         return new string(chars);
+    }
+
+    private static string ResolvePolicyCode(string purpose)
+    {
+        return string.Equals(purpose, LoginSmartOtpPurpose, StringComparison.OrdinalIgnoreCase)
+            ? LoginMfaPolicyCode
+            : purpose;
     }
 
     private static SmartOtpGrpc.RequestMetadata NewMetadata(string step) => new()
