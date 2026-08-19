@@ -63,6 +63,12 @@ internal static class AuthenticatedUserContexts
         return normalized.StartsWith("0", StringComparison.Ordinal) ? "+84" + normalized[1..] : normalized;
     }
 
+    public static string HashPhoneNumberForBinding(string phoneNumber)
+    {
+        var normalized = NormalizePhoneNumber(phoneNumber) ?? phoneNumber.Trim();
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized))).ToLowerInvariant();
+    }
+
     private static string? MaskPhoneNumber(string? phoneNumber)
     {
         if (string.IsNullOrWhiteSpace(phoneNumber) || phoneNumber.Length <= 4)
@@ -111,7 +117,7 @@ public sealed class RegisterCommandHandler : CoreSliceHandler, IRequestHandler<R
     {
         var registrationDeviceId = NormalizeRegistrationDeviceId(request.DeviceContext?.DeviceId);
         var registrationPhoneNumber = AuthenticatedUserContexts.NormalizePhoneNumber(request.PhoneNumber) ?? request.PhoneNumber.Trim();
-        var registrationPhoneHash = HashPhoneNumber(registrationPhoneNumber);
+        var registrationPhoneHash = AuthenticatedUserContexts.HashPhoneNumberForBinding(registrationPhoneNumber);
 
         if (registrationDeviceId is not null)
         {
@@ -162,14 +168,6 @@ public sealed class RegisterCommandHandler : CoreSliceHandler, IRequestHandler<R
         return string.IsNullOrEmpty(normalized) ? null : normalized;
     }
 
-    private static string HashPhoneNumber(string phoneNumber)
-    {
-        var normalized = NormalizePhoneNumberForBinding(phoneNumber);
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized))).ToLowerInvariant();
-    }
-
-    private static string NormalizePhoneNumberForBinding(string phoneNumber)
-        => AuthenticatedUserContexts.NormalizePhoneNumber(phoneNumber) ?? phoneNumber.Trim();
 }
 
 public sealed class PasswordLoginCommandHandler : CoreSliceHandler, IRequestHandler<PasswordLoginCommand, PasswordLoginResult>
@@ -435,20 +433,46 @@ public sealed class RevokePasskeyCommandHandler : IRequestHandler<RevokePasskeyC
 public sealed class BeginPasskeyLoginCommandHandler : IRequestHandler<BeginPasskeyLoginCommand, BeginPasskeyLoginResult>
 {
     private readonly IPasskeyClient _passkey;
+    private readonly ISecurityUserRepository _users;
     private readonly IClock _clock;
 
-    public BeginPasskeyLoginCommandHandler(IPasskeyClient passkey, IClock clock)
+    public BeginPasskeyLoginCommandHandler(IPasskeyClient passkey, ISecurityUserRepository users, IClock clock)
     {
         _passkey = passkey;
+        _users = users;
         _clock = clock;
     }
 
     public async Task<Result<BeginPasskeyLoginResult>> HandleAsync(BeginPasskeyLoginCommand request, CancellationToken cancellationToken)
     {
-        var child = await _passkey.BeginAsync(new PasskeyBeginRequest(Guid.Empty, "login", null, request.LoginIdentifier, FinishPasskeyRegistrationCommandHandler.ToPasskeyDevice(request.DeviceContext)), cancellationToken);
+        var loginIdentifier = await ResolvePasskeyLoginIdentifierAsync(request.LoginIdentifier, cancellationToken);
+        if (loginIdentifier.IsFailure)
+        {
+            return Result<BeginPasskeyLoginResult>.Failure(loginIdentifier.Error!);
+        }
+
+        var child = await _passkey.BeginAsync(new PasskeyBeginRequest(Guid.Empty, "login", null, loginIdentifier.Value, FinishPasskeyRegistrationCommandHandler.ToPasskeyDevice(request.DeviceContext)), cancellationToken);
         return child.IsSuccess && child.Value is not null
             ? Result<BeginPasskeyLoginResult>.Success(new BeginPasskeyLoginResult(child.Value.CeremonyId, JsonDocument.Parse(child.Value.PublicOptionsJson).RootElement.Clone(), _clock.UtcNow.AddMinutes(5)))
             : CoreSliceHandler.ChildFailure<BeginPasskeyLoginResult>(child.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Passkey login begin failed.", true));
+    }
+
+    private async Task<Result<string?>> ResolvePasskeyLoginIdentifierAsync(string? loginIdentifier, CancellationToken cancellationToken)
+    {
+        var normalized = loginIdentifier?.Trim();
+        if (string.IsNullOrEmpty(normalized) || Guid.TryParse(normalized, out _))
+        {
+            return Result<string?>.Success(normalized);
+        }
+
+        var phoneHash = AuthenticatedUserContexts.HashPhoneNumberForBinding(normalized);
+        var user = await _users.FindByRegistrationPhoneNumberHashAsync(phoneHash, cancellationToken);
+        if (user is null)
+        {
+            return Result<string?>.Failure(Error.NotFound("SECURITY_USER_NOT_FOUND", "No registered user was found for the passkey login identifier."));
+        }
+
+        return Result<string?>.Success(user.Id.ToString("D"));
     }
 }
 

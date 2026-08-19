@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using XanhNow.Security.Application.Abstractions.Audit;
 using XanhNow.Security.Application.Abstractions.ChildApps;
 using XanhNow.Security.Application.Abstractions.ChildApps.AuthLogin;
@@ -244,6 +246,29 @@ public sealed class CoreSliceHandlerTests
     }
 
     [Fact]
+    public async Task Passkey_login_begin_resolves_phone_to_user_id_before_calling_child_app()
+    {
+        var userId = Guid.Parse("c1c1c1c1-c1c1-c1c1-c1c1-c1c1c1c1c1c1");
+        var passkey = new FakePasskeyClient { BeginResult = new PasskeyBeginResult("ceremony-1", """{"challenge":"abc"}""") };
+        var users = new FakeSecurityUserRepository();
+        await users.AddAsync(
+            SecurityUser.CreatePendingPasskey(
+                userId,
+                Now,
+                "device-1",
+                "+84900000000",
+                HashPhoneNumberForBinding("+84900000000")),
+            CancellationToken.None);
+
+        var result = await new BeginPasskeyLoginCommandHandler(passkey, users, new FixedClock())
+            .HandleAsync(new BeginPasskeyLoginCommand("0900000000", new DeviceContext("device-1", "Phone", "Android", null, null)), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("login", passkey.LastBeginRequest?.Purpose);
+        Assert.Equal(userId.ToString("D"), passkey.LastBeginRequest?.LoginIdentifier);
+    }
+
+    [Fact]
     public async Task Registration_passkey_finish_requires_device_id_before_calling_child_app()
     {
         var userId = Guid.Parse("cdcdcdcd-cdcd-cdcd-cdcd-cdcdcdcdcdcd");
@@ -419,6 +444,21 @@ public sealed class CoreSliceHandlerTests
         public DateTimeOffset UtcNow => Now;
     }
 
+    private static string HashPhoneNumberForBinding(string phoneNumber)
+    {
+        var normalized = phoneNumber.Trim().Replace(" ", string.Empty, StringComparison.Ordinal).Replace("-", string.Empty, StringComparison.Ordinal);
+        if (normalized.StartsWith("84", StringComparison.Ordinal))
+        {
+            normalized = "+" + normalized;
+        }
+        else if (normalized.StartsWith("0", StringComparison.Ordinal))
+        {
+            normalized = "+84" + normalized[1..];
+        }
+
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized))).ToLowerInvariant();
+    }
+
     private sealed class FakeAuditIntentWriter : IAuditIntentWriter
     {
         public List<AuditIntent> Intents { get; } = [];
@@ -452,6 +492,9 @@ public sealed class CoreSliceHandlerTests
 
         public ValueTask<SecurityUser?> FindByRegistrationDeviceIdAsync(string registrationDeviceId, CancellationToken cancellationToken)
             => ValueTask.FromResult(_users.Values.SingleOrDefault(x => x.RegistrationDeviceId == registrationDeviceId));
+
+        public ValueTask<SecurityUser?> FindByRegistrationPhoneNumberHashAsync(string registrationPhoneNumberHash, CancellationToken cancellationToken)
+            => ValueTask.FromResult(_users.Values.SingleOrDefault(x => x.RegistrationPhoneNumberHash == registrationPhoneNumberHash));
 
         public ValueTask AddAsync(SecurityUser user, CancellationToken cancellationToken)
         {
