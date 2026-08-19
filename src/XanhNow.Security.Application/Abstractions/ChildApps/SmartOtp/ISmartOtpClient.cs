@@ -1,7 +1,7 @@
 namespace XanhNow.Security.Application.Abstractions.ChildApps.SmartOtp;
 
 public sealed record SmartOtpBindBeginRequest(Guid UserId, string DeviceName, string Platform, string AppInstanceIdHashBase64, string KeyAlgorithm, string CandidatePublicKeySpkiBase64, string CandidatePublicKeyThumbprintBase64);
-public sealed record SmartOtpBindBeginResult(string BindingId, string ServerChallengeBase64, int ChallengeFormatVersion, DateTimeOffset ExpiresAtUtc, string Status);
+public sealed record SmartOtpBindBeginResult(string BindingId, string ServerChallengeBase64, int ChallengeFormatVersion, DateTimeOffset CreatedAtUtc, DateTimeOffset ExpiresAtUtc, string Status);
 public sealed record SmartOtpBindFinishRequest(Guid UserId, string BindingId, string ClientNonceBase64, string DeviceSignatureBase64);
 public sealed record SmartOtpBindFinishResult(string DeviceId, string DeviceKeyId, string Status, DateTimeOffset BoundAtUtc);
 public sealed record SmartOtpChallengeRequest(Guid UserId, string Purpose, string TransactionSummary);

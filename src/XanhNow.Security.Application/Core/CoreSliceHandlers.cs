@@ -472,7 +472,7 @@ public sealed class BeginSmartOtpEnrollmentCommandHandler : IRequestHandler<Begi
     {
         var child = await _smartOtp.BeginBindAsync(new SmartOtpBindBeginRequest(request.UserId, request.DeviceName, request.Platform, request.AppInstanceIdHash, request.KeyAlgorithm, request.CandidatePublicKeySpki, request.CandidatePublicKeyThumbprint), cancellationToken);
         return child.IsSuccess && child.Value is not null
-            ? Result<BeginSmartOtpEnrollmentResult>.Success(new BeginSmartOtpEnrollmentResult(child.Value.BindingId, child.Value.ServerChallengeBase64, child.Value.ChallengeFormatVersion, child.Value.ExpiresAtUtc, child.Value.Status))
+            ? Result<BeginSmartOtpEnrollmentResult>.Success(new BeginSmartOtpEnrollmentResult(child.Value.BindingId, child.Value.ServerChallengeBase64, child.Value.ChallengeFormatVersion, child.Value.CreatedAtUtc, child.Value.ExpiresAtUtc, child.Value.Status))
             : CoreSliceHandler.ChildFailure<BeginSmartOtpEnrollmentResult>(child.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Smart OTP begin bind failed.", true));
     }
 }

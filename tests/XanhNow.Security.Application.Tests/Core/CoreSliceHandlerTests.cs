@@ -248,7 +248,7 @@ public sealed class CoreSliceHandlerTests
         var userId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
         var smartOtp = new FakeSmartOtpClient
         {
-            BeginBindResult = new SmartOtpBindBeginResult("bind-1", "challenge-base64", 1, Now.AddMinutes(5), "PENDING"),
+            BeginBindResult = new SmartOtpBindBeginResult("bind-1", "challenge-base64", 1, Now, Now.AddMinutes(5), "PENDING"),
             CreateChallengeResult = new SmartOtpChallengeResult("challenge-1", Now.AddMinutes(5)),
             VerifyResult = new SmartOtpVerifyResult(userId, "totp")
         };
@@ -624,7 +624,7 @@ public sealed class CoreSliceHandlerTests
 
     private sealed class FakeSmartOtpClient : ISmartOtpClient
     {
-        public SmartOtpBindBeginResult BeginBindResult { get; init; } = new("bind", "challenge-base64", 1, Now.AddMinutes(5), "PENDING");
+        public SmartOtpBindBeginResult BeginBindResult { get; init; } = new("bind", "challenge-base64", 1, Now, Now.AddMinutes(5), "PENDING");
         public SmartOtpChallengeResult CreateChallengeResult { get; init; } = new("challenge", Now.AddMinutes(5));
         public SmartOtpVerifyResult VerifyResult { get; init; } = new(Guid.NewGuid(), "totp");
         public SmartOtpRevokeAllDevicesResult RevokeAllDevicesResult { get; init; } = new(0, Now);

@@ -48,6 +48,7 @@ internal sealed class SmartOtpGrpcMtlsClient : ISmartOtpClient, IDisposable
                 response.BindingId,
                 Convert.ToBase64String(response.ServerChallenge.ToByteArray()),
                 response.ChallengeFormatVersion,
+                DateTimeOffset.FromUnixTimeMilliseconds(response.CreatedAtUnixMs),
                 DateTimeOffset.FromUnixTimeMilliseconds(response.ExpiresAtUnixMs),
                 response.Status));
         }

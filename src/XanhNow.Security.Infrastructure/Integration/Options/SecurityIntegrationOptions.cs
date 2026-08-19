@@ -5,7 +5,7 @@ public sealed class SecurityIntegrationOptions
     public ChildAppClientOptions AuthLogin { get; set; } = new() { Name = "Auth_Login_App", BaseAddress = "http://127.0.0.1:8080" };
     public ChildAppClientOptions Jwt { get; set; } = new() { Name = "JWT_Refresh_Token_App", BaseAddress = "http://127.0.0.1:5102" };
     public ChildAppClientOptions Passkey { get; set; } = new() { Name = "Passkey_Provider_App", BaseAddress = "http://127.0.0.1:5101" };
-    public ChildAppClientOptions SmartOtp { get; set; } = new() { Name = "SmartOtp_App", BaseAddress = "https://127.0.0.1:5104", RequiresMtls = true };
+    public ChildAppClientOptions SmartOtp { get; set; } = new() { Name = "SmartOtp_App", BaseAddress = "https://xanhnow-auth-smart-otp:5104", RequiresMtls = true };
     public VaultIntegrationOptions Vault { get; set; } = new();
     public RedisIntegrationOptions Redis { get; set; } = new();
     public KafkaIntegrationOptions Kafka { get; set; } = new();
