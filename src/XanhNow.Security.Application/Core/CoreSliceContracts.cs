@@ -42,3 +42,4 @@ public sealed record RevealStepUpCommand(Guid UserId, string ChallengeId, string
 public sealed record StepUpRevealResult(string ChallengeId, string OtpCode, DateTimeOffset ExpiresAtUtc, int RevealCount, DateTimeOffset ReleasedAtUtc);
 public sealed record VerifyStepUpCommand(Guid UserId, string ChallengeId, string DeviceId, string Purpose, string ExternalTransactionId, string TransactionDigest, string Otp) : ICommand<StepUpGrantResult>;
 public sealed record StepUpGrantResult(string ChallengeId, string StepUpGrant, string Purpose, DateTimeOffset ExpiresAtUtc);
+public sealed record CompleteLoginSmartOtpCommand(Guid UserId, string ChallengeId, string DeviceId, string Purpose, string ExternalTransactionId, string TransactionDigest, string Otp, DeviceContext? DeviceContext) : ICommand<PasswordLoginResult>;

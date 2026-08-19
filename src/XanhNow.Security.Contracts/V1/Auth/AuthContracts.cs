@@ -12,6 +12,28 @@ public sealed record PasswordLoginResponse(AuthenticationState State, Guid? User
 public sealed record MfaChallengeResponse(string ChallengeId, string Method, DateTimeOffset ExpiresAtUtc);
 public sealed record BeginMfaLoginRequest(Guid UserId, string LoginOperationId, string TransactionDigest);
 public sealed record BeginMfaLoginResponse(Guid UserId, string ChallengeId, string Method, string Purpose, DateTimeOffset ExpiresAtUtc);
+public sealed record StartSmartOtpLoginRequest(Guid UserId, string DeviceId, string ExternalTransactionId, string TransactionDigest, DateTimeOffset ExpiresAtUtc);
+public sealed record RevealSmartOtpLoginRequest(
+    Guid UserId,
+    string ChallengeId,
+    string DeviceId,
+    string DeviceKeyId,
+    string Purpose,
+    string ExternalTransactionId,
+    string TransactionDigest,
+    string RevealRequestId,
+    DateTimeOffset IssuedAtUtc,
+    DateTimeOffset ProofExpiresAtUtc,
+    [property: SensitiveData("smart-otp-device-signature")] string DeviceSignature);
+public sealed record CompleteSmartOtpLoginRequest(
+    Guid UserId,
+    string ChallengeId,
+    string DeviceId,
+    string Purpose,
+    string ExternalTransactionId,
+    string TransactionDigest,
+    [property: SensitiveData("otp")] string Otp,
+    DeviceContextRequest? DeviceContext);
 public sealed record CompleteMfaLoginRequest(Guid UserId, string ChallengeId, [property: SensitiveData("otp")] string Otp, string Audience, DeviceContextRequest? DeviceContext);
 public sealed record ProtectedGrantResponse(Guid GrantId, [property: SensitiveData("protected-grant")] string Grant, string GrantType, string Audience, string Purpose, DateTimeOffset ExpiresAtUtc);
 public sealed record PasskeyLoginBeginRequest(string? LoginIdentifier, DeviceContextRequest? DeviceContext);
