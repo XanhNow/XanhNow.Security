@@ -260,9 +260,9 @@ public sealed class CoreSliceHandlerTests
         var confirm = await new ConfirmSmartOtpEnrollmentCommandHandler(smartOtp, profiles, unitOfWork, new FixedClock())
             .HandleAsync(new ConfirmSmartOtpEnrollmentCommand(userId, "bind-1", "nonce", "signature"), CancellationToken.None);
         var challenge = await new StartStepUpCommandHandler(smartOtp)
-            .HandleAsync(new StartStepUpCommand(userId, "transaction", "digest", Now.AddMinutes(5)), CancellationToken.None);
+            .HandleAsync(new StartStepUpCommand(userId, "device-1", "transaction", "transaction-1", "digest", Now.AddMinutes(5)), CancellationToken.None);
         var grant = await new VerifyStepUpCommandHandler(smartOtp, new FixedClock())
-            .HandleAsync(new VerifyStepUpCommand("challenge-1", "123456"), CancellationToken.None);
+            .HandleAsync(new VerifyStepUpCommand(userId, "challenge-1", "device-1", "transaction", "transaction-1", "digest", "123456"), CancellationToken.None);
 
         Assert.True(begin.IsSuccess);
         Assert.Equal("challenge-base64", begin.Value!.ServerChallenge);
