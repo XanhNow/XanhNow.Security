@@ -29,6 +29,7 @@ public sealed class SecurityUser : AggregateRoot<Guid>
     public DateTimeOffset? PasskeyRegisteredAt { get; private set; }
     public DateTimeOffset? RegistrationCompletedAt { get; private set; }
     public string? RegistrationDeviceId { get; private set; }
+    public string? RegistrationPhoneNumber { get; private set; }
     public string? RegistrationPhoneNumberHash { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -36,7 +37,7 @@ public sealed class SecurityUser : AggregateRoot<Guid>
 
     public static SecurityUser Create(Guid userId, DateTimeOffset createdAt) => new(userId, createdAt);
 
-    public static SecurityUser CreatePendingPasskey(Guid userId, DateTimeOffset passwordRegisteredAt, string? registrationDeviceId = null, string? registrationPhoneNumberHash = null)
+    public static SecurityUser CreatePendingPasskey(Guid userId, DateTimeOffset passwordRegisteredAt, string? registrationDeviceId = null, string? registrationPhoneNumber = null, string? registrationPhoneNumberHash = null)
     {
         var user = new SecurityUser(userId, passwordRegisteredAt)
         {
@@ -45,6 +46,7 @@ public sealed class SecurityUser : AggregateRoot<Guid>
             PasskeyRegisteredAt = null,
             RegistrationCompletedAt = null,
             RegistrationDeviceId = NormalizeOptional(registrationDeviceId),
+            RegistrationPhoneNumber = NormalizeOptional(registrationPhoneNumber),
             RegistrationPhoneNumberHash = NormalizeOptional(registrationPhoneNumberHash)
         };
 
@@ -68,10 +70,11 @@ public sealed class SecurityUser : AggregateRoot<Guid>
         UpdatedAt = occurredAt;
     }
 
-    public void BindRegistrationDevice(string deviceId, string phoneNumberHash, DateTimeOffset occurredAt)
+    public void BindRegistrationDevice(string deviceId, string phoneNumber, string phoneNumberHash, DateTimeOffset occurredAt)
     {
         EnsureNotDisabled();
         var normalizedDeviceId = Guard.NotBlank(deviceId, nameof(deviceId), 128);
+        var normalizedPhoneNumber = Guard.NotBlank(phoneNumber, nameof(phoneNumber), 32);
         var normalizedPhoneNumberHash = Guard.NotBlank(phoneNumberHash, nameof(phoneNumberHash), 128);
 
         if (RegistrationDeviceId is not null && !string.Equals(RegistrationDeviceId, normalizedDeviceId, StringComparison.Ordinal))
@@ -85,6 +88,7 @@ public sealed class SecurityUser : AggregateRoot<Guid>
         }
 
         RegistrationDeviceId = normalizedDeviceId;
+        RegistrationPhoneNumber = normalizedPhoneNumber;
         RegistrationPhoneNumberHash = normalizedPhoneNumberHash;
         UpdatedAt = occurredAt;
     }

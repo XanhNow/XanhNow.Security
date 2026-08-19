@@ -38,6 +38,8 @@ public sealed class CoreSliceHandlerTests
         Assert.True(result.IsSuccess);
         Assert.Equal(userId, result.Value!.UserId);
         Assert.Equal(UserRegistrationStatus.PendingPasskey.ToString(), result.Value.RegistrationStatus);
+        Assert.Equal(userId, result.Value.Identity?.UserId);
+        Assert.Equal("+84900000000", result.Value.Identity?.PhoneNumber);
         Assert.Equal("0900000000", authLogin.LastRegisterRequest?.PhoneNumber);
         Assert.True(users.Contains(userId));
         Assert.Equal("device-1", (await users.FindByIdAsync(userId, CancellationToken.None))!.RegistrationDeviceId);
@@ -91,6 +93,8 @@ public sealed class CoreSliceHandlerTests
         Assert.Equal(userId, jwt.LastIssueRequest?.UserId);
         Assert.Equal("access", result.Value.Tokens?.AccessToken);
         Assert.Equal("refresh-ref", result.Value.Tokens?.RefreshToken);
+        Assert.Equal(userId, result.Value.Identity?.UserId);
+        Assert.Equal("+84900000001", result.Value.Identity?.PhoneNumber);
     }
 
     [Fact]
@@ -111,6 +115,8 @@ public sealed class CoreSliceHandlerTests
         Assert.Equal("MfaRequired", result.Value!.State);
         Assert.Equal("smart_otp_required", result.Value.ReasonCode);
         Assert.Equal("smart_otp", result.Value.Mfa?.Method);
+        Assert.Equal(userId, result.Value.Identity?.UserId);
+        Assert.Equal("+84900000001", result.Value.Identity?.PhoneNumber);
         Assert.Null(result.Value.Tokens);
         Assert.Null(jwt.LastIssueRequest);
     }
