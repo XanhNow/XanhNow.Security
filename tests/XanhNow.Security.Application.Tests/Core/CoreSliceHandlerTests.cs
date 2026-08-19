@@ -249,7 +249,7 @@ public sealed class CoreSliceHandlerTests
         var smartOtp = new FakeSmartOtpClient
         {
             BeginBindResult = new SmartOtpBindBeginResult("bind-1", "challenge-base64", 1, Now, Now.AddMinutes(5), "PENDING"),
-            CreateChallengeResult = new SmartOtpChallengeResult("challenge-1", Now.AddMinutes(5)),
+            CreateChallengeResult = new SmartOtpChallengeResult("challenge-1", "external-user", "device-1", "device-key-1", Now.AddMinutes(5), 6, 5),
             VerifyResult = new SmartOtpVerifyResult(userId, "totp")
         };
         var profiles = new FakeSecurityProfileStore();
@@ -625,7 +625,8 @@ public sealed class CoreSliceHandlerTests
     private sealed class FakeSmartOtpClient : ISmartOtpClient
     {
         public SmartOtpBindBeginResult BeginBindResult { get; init; } = new("bind", "challenge-base64", 1, Now, Now.AddMinutes(5), "PENDING");
-        public SmartOtpChallengeResult CreateChallengeResult { get; init; } = new("challenge", Now.AddMinutes(5));
+        public SmartOtpChallengeResult CreateChallengeResult { get; init; } = new("challenge", "external-user", "device-1", "device-key-1", Now.AddMinutes(5), 6, 5);
+        public SmartOtpRevealResult RevealResult { get; init; } = new("challenge", "123456", Now.AddMinutes(5), 1, Now);
         public SmartOtpVerifyResult VerifyResult { get; init; } = new(Guid.NewGuid(), "totp");
         public SmartOtpRevokeAllDevicesResult RevokeAllDevicesResult { get; init; } = new(0, Now);
         public SmartOtpRevokeAllDevicesRequest? LastRevokeAllDevicesRequest { get; private set; }
@@ -638,6 +639,9 @@ public sealed class CoreSliceHandlerTests
 
         public ValueTask<ChildCallResult<SmartOtpChallengeResult>> CreateChallengeAsync(SmartOtpChallengeRequest request, CancellationToken cancellationToken)
             => ValueTask.FromResult(ChildCallResult<SmartOtpChallengeResult>.Success(CreateChallengeResult));
+
+        public ValueTask<ChildCallResult<SmartOtpRevealResult>> RevealAsync(SmartOtpRevealRequest request, CancellationToken cancellationToken)
+            => ValueTask.FromResult(ChildCallResult<SmartOtpRevealResult>.Success(RevealResult));
 
         public ValueTask<ChildCallResult<SmartOtpVerifyResult>> VerifyAsync(SmartOtpVerifyRequest request, CancellationToken cancellationToken)
             => ValueTask.FromResult(ChildCallResult<SmartOtpVerifyResult>.Success(VerifyResult));
