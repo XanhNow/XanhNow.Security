@@ -529,10 +529,42 @@ public sealed class StartStepUpCommandHandler : IRequestHandler<StartStepUpComma
 
     public async Task<Result<StepUpChallengeResult>> HandleAsync(StartStepUpCommand request, CancellationToken cancellationToken)
     {
-        var child = await _smartOtp.CreateChallengeAsync(new SmartOtpChallengeRequest(request.UserId, request.Purpose, request.TransactionDigest), cancellationToken);
+        if (string.IsNullOrWhiteSpace(request.DeviceId))
+        {
+            return Result<StepUpChallengeResult>.Failure(Error.Validation(SecurityErrorCodes.ValidationFailed, "deviceId is required."));
+        }
+
+        var child = await _smartOtp.CreateChallengeAsync(new SmartOtpChallengeRequest(request.UserId, request.DeviceId, request.Purpose, request.ExternalTransactionId, request.TransactionDigest), cancellationToken);
         return child.IsSuccess && child.Value is not null
-            ? Result<StepUpChallengeResult>.Success(new StepUpChallengeResult(child.Value.ChallengeId, request.Purpose, child.Value.ExpiresAt))
+            ? Result<StepUpChallengeResult>.Success(new StepUpChallengeResult(child.Value.ChallengeId, child.Value.ExternalUserId, child.Value.DeviceId, child.Value.DeviceKeyId, request.Purpose, request.ExternalTransactionId, request.TransactionDigest, child.Value.ExpiresAt, child.Value.CodeLength, child.Value.MaxAttempts))
             : CoreSliceHandler.ChildFailure<StepUpChallengeResult>(child.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Smart OTP challenge failed.", true));
+    }
+}
+
+public sealed class RevealStepUpCommandHandler : IRequestHandler<RevealStepUpCommand, StepUpRevealResult>
+{
+    private readonly ISmartOtpClient _smartOtp;
+
+    public RevealStepUpCommandHandler(ISmartOtpClient smartOtp) => _smartOtp = smartOtp;
+
+    public async Task<Result<StepUpRevealResult>> HandleAsync(RevealStepUpCommand request, CancellationToken cancellationToken)
+    {
+        var child = await _smartOtp.RevealAsync(new SmartOtpRevealRequest(
+            request.UserId,
+            request.ChallengeId,
+            request.DeviceId,
+            request.DeviceKeyId,
+            request.Purpose,
+            request.ExternalTransactionId,
+            request.TransactionDigest,
+            request.RevealRequestId,
+            request.IssuedAtUtc,
+            request.ProofExpiresAtUtc,
+            request.DeviceSignature), cancellationToken);
+
+        return child.IsSuccess && child.Value is not null
+            ? Result<StepUpRevealResult>.Success(new StepUpRevealResult(child.Value.ChallengeId, child.Value.OtpCode, child.Value.ExpiresAtUtc, child.Value.RevealCount, child.Value.ReleasedAtUtc))
+            : CoreSliceHandler.ChildFailure<StepUpRevealResult>(child.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Smart OTP reveal failed.", true));
     }
 }
 
@@ -549,9 +581,9 @@ public sealed class VerifyStepUpCommandHandler : IRequestHandler<VerifyStepUpCom
 
     public async Task<Result<StepUpGrantResult>> HandleAsync(VerifyStepUpCommand request, CancellationToken cancellationToken)
     {
-        var child = await _smartOtp.VerifyAsync(new SmartOtpVerifyRequest(request.ChallengeId, new SensitiveString(request.Otp)), cancellationToken);
+        var child = await _smartOtp.VerifyAsync(new SmartOtpVerifyRequest(request.UserId, request.ChallengeId, request.DeviceId, request.Purpose, request.ExternalTransactionId, request.TransactionDigest, new SensitiveString(request.Otp)), cancellationToken);
         return child.IsSuccess && child.Value is not null
-            ? Result<StepUpGrantResult>.Success(new StepUpGrantResult(request.ChallengeId, $"step-up:{child.Value.UserId:N}", "transaction_step_up", _clock.UtcNow.AddMinutes(5)))
+            ? Result<StepUpGrantResult>.Success(new StepUpGrantResult(request.ChallengeId, $"step-up:{child.Value.UserId:N}", request.Purpose, _clock.UtcNow.AddMinutes(5)))
             : CoreSliceHandler.ChildFailure<StepUpGrantResult>(child.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Smart OTP verify failed.", true));
     }
 }

@@ -16,6 +16,7 @@ public sealed class SmartOtpController : ApiControllerBase
     private readonly ApplicationExecutor<BeginSmartOtpEnrollmentCommand, BeginSmartOtpEnrollmentResult> _beginEnrollment;
     private readonly ApplicationExecutor<ConfirmSmartOtpEnrollmentCommand, SmartOtpDeviceStateResult> _confirmEnrollment;
     private readonly ApplicationExecutor<StartStepUpCommand, StepUpChallengeResult> _startStepUp;
+    private readonly ApplicationExecutor<RevealStepUpCommand, StepUpRevealResult> _revealStepUp;
     private readonly ApplicationExecutor<VerifyStepUpCommand, StepUpGrantResult> _verifyStepUp;
     private readonly ApplicationExecutor<IssueTransactionStepUpGrantCommand, ProtectedGrantResult> _issueTransactionGrant;
 
@@ -23,12 +24,14 @@ public sealed class SmartOtpController : ApiControllerBase
         ApplicationExecutor<BeginSmartOtpEnrollmentCommand, BeginSmartOtpEnrollmentResult> beginEnrollment,
         ApplicationExecutor<ConfirmSmartOtpEnrollmentCommand, SmartOtpDeviceStateResult> confirmEnrollment,
         ApplicationExecutor<StartStepUpCommand, StepUpChallengeResult> startStepUp,
+        ApplicationExecutor<RevealStepUpCommand, StepUpRevealResult> revealStepUp,
         ApplicationExecutor<VerifyStepUpCommand, StepUpGrantResult> verifyStepUp,
         ApplicationExecutor<IssueTransactionStepUpGrantCommand, ProtectedGrantResult> issueTransactionGrant)
     {
         _beginEnrollment = beginEnrollment;
         _confirmEnrollment = confirmEnrollment;
         _startStepUp = startStepUp;
+        _revealStepUp = revealStepUp;
         _verifyStepUp = verifyStepUp;
         _issueTransactionGrant = issueTransactionGrant;
     }
@@ -53,15 +56,23 @@ public sealed class SmartOtpController : ApiControllerBase
     [EndpointMaturity("Current", "smart_otp.step_up.start")]
     public async Task<ActionResult<ApiResponse<StepUpChallengeResponse>>> StartStepUpAsync(StartStepUpRequest request, CancellationToken cancellationToken)
     {
-        var result = await _startStepUp.ExecuteAsync(new StartStepUpCommand(CurrentUserIdOrEmpty(), request.Purpose, request.TransactionDigest, request.ExpiresAtUtc), cancellationToken);
-        return FromApplicationResult(result, x => new StepUpChallengeResponse(x.ChallengeId, x.Purpose, x.ExpiresAtUtc));
+        var result = await _startStepUp.ExecuteAsync(new StartStepUpCommand(CurrentUserIdOrEmpty(), request.DeviceId, request.Purpose, request.ExternalTransactionId, request.TransactionDigest, request.ExpiresAtUtc), cancellationToken);
+        return FromApplicationResult(result, x => new StepUpChallengeResponse(x.ChallengeId, x.ExternalUserId, x.DeviceId, x.DeviceKeyId, x.Purpose, x.ExternalTransactionId, x.TransactionDigest, x.ExpiresAtUtc, x.CodeLength, x.MaxAttempts));
+    }
+
+    [HttpPost("step-up/reveal")]
+    [EndpointMaturity("Current", "smart_otp.step_up.reveal")]
+    public async Task<ActionResult<ApiResponse<StepUpRevealResponse>>> RevealStepUpAsync(RevealStepUpRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _revealStepUp.ExecuteAsync(new RevealStepUpCommand(CurrentUserIdOrEmpty(), request.ChallengeId, request.DeviceId, request.DeviceKeyId, request.Purpose, request.ExternalTransactionId, request.TransactionDigest, request.RevealRequestId, request.IssuedAtUtc, request.ProofExpiresAtUtc, request.DeviceSignature), cancellationToken);
+        return FromApplicationResult(result, x => new StepUpRevealResponse(x.ChallengeId, x.OtpCode, x.ExpiresAtUtc, x.RevealCount, x.ReleasedAtUtc));
     }
 
     [HttpPost("step-up/verify")]
     [EndpointMaturity("Current", "smart_otp.step_up.verify")]
     public async Task<ActionResult<ApiResponse<StepUpGrantResponse>>> VerifyStepUpAsync(VerifyStepUpRequest request, CancellationToken cancellationToken)
     {
-        var result = await _verifyStepUp.ExecuteAsync(new VerifyStepUpCommand(request.ChallengeId, request.Otp), cancellationToken);
+        var result = await _verifyStepUp.ExecuteAsync(new VerifyStepUpCommand(CurrentUserIdOrEmpty(), request.ChallengeId, request.DeviceId, request.Purpose, request.ExternalTransactionId, request.TransactionDigest, request.Otp), cancellationToken);
         return FromApplicationResult(result, x => new StepUpGrantResponse(x.ChallengeId, x.StepUpGrant, x.Purpose, x.ExpiresAtUtc));
     }
 

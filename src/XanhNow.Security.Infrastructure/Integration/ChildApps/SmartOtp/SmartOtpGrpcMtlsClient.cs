@@ -95,17 +95,27 @@ internal sealed class SmartOtpGrpcMtlsClient : ISmartOtpClient, IDisposable
     {
         try
         {
+            var externalUserId = ToExternalUserId(request.UserId);
             var response = await client.CreateOtpChallengeAsync(new SmartOtpGrpc.CreateOtpChallengeRequest
             {
-                ExternalUserId = ToExternalUserId(request.UserId),
+                ExternalUserId = externalUserId,
+                DeviceId = request.DeviceId,
                 Purpose = request.Purpose,
+                ExternalTransactionId = request.ExternalTransactionId,
                 PolicyCode = request.Purpose,
-                TransactionDigest = ByteString.CopyFrom(Encoding.UTF8.GetBytes(request.TransactionSummary ?? string.Empty)),
+                TransactionDigest = ByteString.CopyFrom(Encoding.UTF8.GetBytes(request.TransactionDigest ?? string.Empty)),
                 Metadata = NewMetadata("smart-otp-challenge-create")
             }, cancellationToken: cancellationToken).ResponseAsync.ConfigureAwait(false);
 
             return ChildCallResult<SmartOtpChallengeResult>.Success(
-                new SmartOtpChallengeResult(response.ChallengeId, DateTimeOffset.FromUnixTimeMilliseconds(response.ExpiresAtUnixMs)));
+                new SmartOtpChallengeResult(
+                    response.ChallengeId,
+                    externalUserId,
+                    response.DeviceId,
+                    response.DeviceKeyId,
+                    DateTimeOffset.FromUnixTimeMilliseconds(response.ExpiresAtUnixMs),
+                    response.CodeLength,
+                    response.MaxAttempts));
         }
         catch (RpcException ex)
         {
@@ -117,8 +127,76 @@ internal sealed class SmartOtpGrpcMtlsClient : ISmartOtpClient, IDisposable
         }
     }
 
-    public ValueTask<ChildCallResult<SmartOtpVerifyResult>> VerifyAsync(SmartOtpVerifyRequest request, CancellationToken cancellationToken)
-        => ValueTask.FromResult(ChildCallResult<SmartOtpVerifyResult>.Failure(new ChildCallError("smart_otp.contract_incomplete", "Smart OTP verify requires device id and transaction context.", false)));
+    public async ValueTask<ChildCallResult<SmartOtpRevealResult>> RevealAsync(SmartOtpRevealRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await client.RevealOtpChallengeAsync(new SmartOtpGrpc.RevealOtpChallengeRequest
+            {
+                ChallengeId = request.ChallengeId,
+                ExternalUserId = ToExternalUserId(request.UserId),
+                DeviceId = request.DeviceId,
+                DeviceKeyId = request.DeviceKeyId,
+                Purpose = request.Purpose,
+                ExternalTransactionId = request.ExternalTransactionId,
+                TransactionDigest = ByteString.CopyFrom(Encoding.UTF8.GetBytes(request.TransactionDigest ?? string.Empty)),
+                RevealRequestId = request.RevealRequestId,
+                IssuedAtUnixMs = request.IssuedAtUtc.ToUnixTimeMilliseconds(),
+                ProofExpiresAtUnixMs = request.ProofExpiresAtUtc.ToUnixTimeMilliseconds(),
+                DeviceSignature = ByteString.CopyFrom(FromBase64(request.DeviceSignatureBase64)),
+                Metadata = NewMetadata("smart-otp-challenge-reveal")
+            }, cancellationToken: cancellationToken).ResponseAsync.ConfigureAwait(false);
+
+            return ChildCallResult<SmartOtpRevealResult>.Success(new SmartOtpRevealResult(
+                response.ChallengeId,
+                response.OtpCode,
+                DateTimeOffset.FromUnixTimeMilliseconds(response.ExpiresAtUnixMs),
+                response.RevealCount,
+                DateTimeOffset.FromUnixTimeMilliseconds(response.ReleasedAtUnixMs)));
+        }
+        catch (RpcException ex)
+        {
+            return ChildCallResult<SmartOtpRevealResult>.Failure(ToError(ex));
+        }
+        catch (Exception ex)
+        {
+            return ChildCallResult<SmartOtpRevealResult>.Failure(DownstreamErrorMapper.FromException(ex, options.Name));
+        }
+    }
+
+    public async ValueTask<ChildCallResult<SmartOtpVerifyResult>> VerifyAsync(SmartOtpVerifyRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await client.VerifyOtpChallengeAsync(new SmartOtpGrpc.VerifyOtpChallengeRequest
+            {
+                ChallengeId = request.ChallengeId,
+                ExternalUserId = ToExternalUserId(request.UserId),
+                DeviceId = request.DeviceId,
+                Purpose = request.Purpose,
+                ExternalTransactionId = request.ExternalTransactionId,
+                TransactionDigest = ByteString.CopyFrom(Encoding.UTF8.GetBytes(request.TransactionDigest ?? string.Empty)),
+                OtpCode = request.TotpCode.Value,
+                VerificationRequestId = $"verify-{Guid.NewGuid():N}",
+                Metadata = NewMetadata("smart-otp-challenge-verify")
+            }, cancellationToken: cancellationToken).ResponseAsync.ConfigureAwait(false);
+
+            if (!response.Success)
+            {
+                return ChildCallResult<SmartOtpVerifyResult>.Failure(new ChildCallError("smart_otp.verify_failed", response.ResultCode, false));
+            }
+
+            return ChildCallResult<SmartOtpVerifyResult>.Success(new SmartOtpVerifyResult(request.UserId, "smart_otp"));
+        }
+        catch (RpcException ex)
+        {
+            return ChildCallResult<SmartOtpVerifyResult>.Failure(ToError(ex));
+        }
+        catch (Exception ex)
+        {
+            return ChildCallResult<SmartOtpVerifyResult>.Failure(DownstreamErrorMapper.FromException(ex, options.Name));
+        }
+    }
 
     public ValueTask<ChildCallResult<SmartOtpRevokeAllDevicesResult>> RevokeAllDevicesAsync(SmartOtpRevokeAllDevicesRequest request, CancellationToken cancellationToken)
         => ValueTask.FromResult(ChildCallResult<SmartOtpRevokeAllDevicesResult>.Failure(new ChildCallError("smart_otp.revoke_all_unsupported", "Smart OTP provider contract does not support revoke-all devices without device ids.", false)));

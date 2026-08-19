@@ -36,7 +36,9 @@ public sealed record BeginSmartOtpEnrollmentCommand(Guid UserId, string DeviceNa
 public sealed record BeginSmartOtpEnrollmentResult(string EnrollmentId, string ServerChallenge, int ChallengeFormatVersion, DateTimeOffset CreatedAtUtc, DateTimeOffset ExpiresAtUtc, string Status);
 public sealed record ConfirmSmartOtpEnrollmentCommand(Guid UserId, string EnrollmentId, string ClientNonce, string DeviceSignature) : ICommand<SmartOtpDeviceStateResult>;
 public sealed record SmartOtpDeviceStateResult(string DeviceId, string DeviceKeyId, string Status, bool IsEnabled, DateTimeOffset UpdatedAtUtc);
-public sealed record StartStepUpCommand(Guid UserId, string Purpose, string TransactionDigest, DateTimeOffset ExpiresAtUtc) : ICommand<StepUpChallengeResult>;
-public sealed record StepUpChallengeResult(string ChallengeId, string Purpose, DateTimeOffset ExpiresAtUtc);
-public sealed record VerifyStepUpCommand(string ChallengeId, string Otp) : ICommand<StepUpGrantResult>;
+public sealed record StartStepUpCommand(Guid UserId, string DeviceId, string Purpose, string ExternalTransactionId, string TransactionDigest, DateTimeOffset ExpiresAtUtc) : ICommand<StepUpChallengeResult>;
+public sealed record StepUpChallengeResult(string ChallengeId, string ExternalUserId, string DeviceId, string DeviceKeyId, string Purpose, string ExternalTransactionId, string TransactionDigest, DateTimeOffset ExpiresAtUtc, int CodeLength, int MaxAttempts);
+public sealed record RevealStepUpCommand(Guid UserId, string ChallengeId, string DeviceId, string DeviceKeyId, string Purpose, string ExternalTransactionId, string TransactionDigest, string RevealRequestId, DateTimeOffset IssuedAtUtc, DateTimeOffset ProofExpiresAtUtc, string DeviceSignature) : ICommand<StepUpRevealResult>;
+public sealed record StepUpRevealResult(string ChallengeId, string OtpCode, DateTimeOffset ExpiresAtUtc, int RevealCount, DateTimeOffset ReleasedAtUtc);
+public sealed record VerifyStepUpCommand(Guid UserId, string ChallengeId, string DeviceId, string Purpose, string ExternalTransactionId, string TransactionDigest, string Otp) : ICommand<StepUpGrantResult>;
 public sealed record StepUpGrantResult(string ChallengeId, string StepUpGrant, string Purpose, DateTimeOffset ExpiresAtUtc);

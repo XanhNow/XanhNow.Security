@@ -27,8 +27,20 @@ public sealed record SmartOtpDeviceStateResponse(string DeviceId, string DeviceK
 
 public sealed record SmartOtpDeviceSummaryResponse(string DeviceId, string DeviceName, bool IsEnabled, DateTimeOffset CreatedAtUtc, DateTimeOffset? LastUsedAtUtc);
 public sealed record RevokeSmartOtpDeviceRequest(string ReasonCode);
-public sealed record StartStepUpRequest(string Purpose, string TransactionDigest, DateTimeOffset ExpiresAtUtc);
-public sealed record StepUpChallengeResponse(string ChallengeId, string Purpose, DateTimeOffset ExpiresAtUtc);
-public sealed record VerifyStepUpRequest(string ChallengeId, [property: SensitiveData("otp")] string Otp);
+public sealed record StartStepUpRequest(string DeviceId, string Purpose, string ExternalTransactionId, string TransactionDigest, DateTimeOffset ExpiresAtUtc);
+public sealed record StepUpChallengeResponse(string ChallengeId, string ExternalUserId, string DeviceId, string DeviceKeyId, string Purpose, string ExternalTransactionId, string TransactionDigest, DateTimeOffset ExpiresAtUtc, int CodeLength, int MaxAttempts);
+public sealed record RevealStepUpRequest(
+    string ChallengeId,
+    string DeviceId,
+    string DeviceKeyId,
+    string Purpose,
+    string ExternalTransactionId,
+    string TransactionDigest,
+    string RevealRequestId,
+    DateTimeOffset IssuedAtUtc,
+    DateTimeOffset ProofExpiresAtUtc,
+    [property: SensitiveData("smart-otp-device-signature")] string DeviceSignature);
+public sealed record StepUpRevealResponse(string ChallengeId, [property: SensitiveData("otp")] string OtpCode, DateTimeOffset ExpiresAtUtc, int RevealCount, DateTimeOffset ReleasedAtUtc);
+public sealed record VerifyStepUpRequest(string ChallengeId, string DeviceId, string Purpose, string ExternalTransactionId, string TransactionDigest, [property: SensitiveData("otp")] string Otp);
 public sealed record StepUpGrantResponse(string ChallengeId, [property: SensitiveData("step-up-grant")] string StepUpGrant, string Purpose, DateTimeOffset ExpiresAtUtc);
 public sealed record IssueTransactionStepUpGrantRequest(string Audience, string Purpose, string TransactionId, string TransactionDigest, string CanonicalizationVersion, string ChallengeId, [property: SensitiveData("otp")] string Otp);

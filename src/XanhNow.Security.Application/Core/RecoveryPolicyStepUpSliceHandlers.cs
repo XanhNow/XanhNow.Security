@@ -130,7 +130,7 @@ public sealed class BeginLoginMfaCommandHandler : IRequestHandler<BeginLoginMfaC
 
     public async Task<Result<LoginMfaChallengeResult>> HandleAsync(BeginLoginMfaCommand request, CancellationToken cancellationToken)
     {
-        var child = await _smartOtp.CreateChallengeAsync(new SmartOtpChallengeRequest(request.UserId, "login_mfa", request.TransactionDigest), cancellationToken);
+        var child = await _smartOtp.CreateChallengeAsync(new SmartOtpChallengeRequest(request.UserId, string.Empty, "login_mfa", request.LoginOperationId, request.TransactionDigest), cancellationToken);
         return child.IsSuccess && child.Value is not null
             ? Result<LoginMfaChallengeResult>.Success(new LoginMfaChallengeResult(request.UserId, child.Value.ChallengeId, "totp", "login_mfa", child.Value.ExpiresAt))
             : CoreSliceHandler.ChildFailure<LoginMfaChallengeResult>(child.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Smart OTP login MFA challenge failed.", true));
@@ -158,7 +158,7 @@ public sealed class CompleteLoginMfaCommandHandler : IRequestHandler<CompleteLog
 
     public async Task<Result<ProtectedGrantResult>> HandleAsync(CompleteLoginMfaCommand request, CancellationToken cancellationToken)
     {
-        var verified = await _smartOtp.VerifyAsync(new SmartOtpVerifyRequest(request.ChallengeId, new SensitiveString(request.TotpCode)), cancellationToken);
+        var verified = await _smartOtp.VerifyAsync(new SmartOtpVerifyRequest(request.UserId, request.ChallengeId, string.Empty, "login_mfa", string.Empty, string.Empty, new SensitiveString(request.TotpCode)), cancellationToken);
         if (verified.IsFailure || verified.Value is null || verified.Value.UserId != request.UserId)
         {
             return CoreSliceHandler.ChildFailure<ProtectedGrantResult>(verified.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Smart OTP login MFA verify failed.", true));
@@ -222,7 +222,7 @@ public sealed class IssueTransactionStepUpGrantCommandHandler : IRequestHandler<
 
     public async Task<Result<ProtectedGrantResult>> HandleAsync(IssueTransactionStepUpGrantCommand request, CancellationToken cancellationToken)
     {
-        var verified = await _smartOtp.VerifyAsync(new SmartOtpVerifyRequest(request.ChallengeId, new SensitiveString(request.TotpCode)), cancellationToken);
+        var verified = await _smartOtp.VerifyAsync(new SmartOtpVerifyRequest(request.UserId, request.ChallengeId, string.Empty, request.Purpose, request.TransactionId, request.TransactionDigest, new SensitiveString(request.TotpCode)), cancellationToken);
         if (verified.IsFailure || verified.Value is null || verified.Value.UserId != request.UserId)
         {
             return CoreSliceHandler.ChildFailure<ProtectedGrantResult>(verified.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Smart OTP transaction step-up verify failed.", true));
