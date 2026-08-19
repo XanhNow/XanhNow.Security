@@ -48,7 +48,7 @@ internal sealed class SmartOtpGrpcMtlsClient : ISmartOtpClient, IDisposable
                 response.BindingId,
                 Convert.ToBase64String(response.ServerChallenge.ToByteArray()),
                 response.ChallengeFormatVersion,
-                DateTimeOffset.FromUnixTimeMilliseconds(response.CreatedAtUnixMs),
+                ResolveCreatedAt(response.CreatedAtUnixMs, response.ExpiresAtUnixMs),
                 DateTimeOffset.FromUnixTimeMilliseconds(response.ExpiresAtUnixMs),
                 response.Status));
         }
@@ -193,6 +193,17 @@ internal sealed class SmartOtpGrpcMtlsClient : ISmartOtpClient, IDisposable
     };
 
     private static byte[] FromBase64(string value) => Convert.FromBase64String(value);
+
+    private static DateTimeOffset ResolveCreatedAt(long createdAtUnixMs, long expiresAtUnixMs)
+    {
+        if (createdAtUnixMs > 0)
+        {
+            return DateTimeOffset.FromUnixTimeMilliseconds(createdAtUnixMs);
+        }
+
+        // SmartOtp Provider versions before CreatedAtUnixMs still use a fixed 5 minute bind TTL.
+        return DateTimeOffset.FromUnixTimeMilliseconds(expiresAtUnixMs).Subtract(TimeSpan.FromMinutes(5));
+    }
 
     private ChildCallError ToError(RpcException ex)
         => new("downstream.grpc_error", $"{options.Name} gRPC {ex.StatusCode}: {ex.Status.Detail}", ex.StatusCode is StatusCode.Unavailable or StatusCode.DeadlineExceeded or StatusCode.ResourceExhausted);
