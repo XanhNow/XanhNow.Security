@@ -46,7 +46,7 @@ public sealed class ApiBoundaryTests
             ["PolicyController"] = 1,
             ["RecoveryController"] = 3,
             ["SessionsController"] = 5,
-            ["SmartOtpController"] = 5
+            ["SmartOtpController"] = 6
         };
 
         foreach (var shell in shellTypes)
