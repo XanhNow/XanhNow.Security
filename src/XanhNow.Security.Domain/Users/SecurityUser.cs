@@ -28,20 +28,24 @@ public sealed class SecurityUser : AggregateRoot<Guid>
     public DateTimeOffset? PasswordRegisteredAt { get; private set; }
     public DateTimeOffset? PasskeyRegisteredAt { get; private set; }
     public DateTimeOffset? RegistrationCompletedAt { get; private set; }
+    public string? RegistrationDeviceId { get; private set; }
+    public string? RegistrationPhoneNumberHash { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
     public ReasonCode? LastReason { get; private set; }
 
     public static SecurityUser Create(Guid userId, DateTimeOffset createdAt) => new(userId, createdAt);
 
-    public static SecurityUser CreatePendingPasskey(Guid userId, DateTimeOffset passwordRegisteredAt)
+    public static SecurityUser CreatePendingPasskey(Guid userId, DateTimeOffset passwordRegisteredAt, string? registrationDeviceId = null, string? registrationPhoneNumberHash = null)
     {
         var user = new SecurityUser(userId, passwordRegisteredAt)
         {
             RegistrationStatus = UserRegistrationStatus.PendingPasskey,
             PasswordRegisteredAt = passwordRegisteredAt,
             PasskeyRegisteredAt = null,
-            RegistrationCompletedAt = null
+            RegistrationCompletedAt = null,
+            RegistrationDeviceId = NormalizeOptional(registrationDeviceId),
+            RegistrationPhoneNumberHash = NormalizeOptional(registrationPhoneNumberHash)
         };
 
         return user;
@@ -61,6 +65,27 @@ public sealed class SecurityUser : AggregateRoot<Guid>
         PasskeyRegisteredAt = occurredAt;
         RegistrationCompletedAt = occurredAt;
         RegistrationStatus = UserRegistrationStatus.Completed;
+        UpdatedAt = occurredAt;
+    }
+
+    public void BindRegistrationDevice(string deviceId, string phoneNumberHash, DateTimeOffset occurredAt)
+    {
+        EnsureNotDisabled();
+        var normalizedDeviceId = Guard.NotBlank(deviceId, nameof(deviceId), 128);
+        var normalizedPhoneNumberHash = Guard.NotBlank(phoneNumberHash, nameof(phoneNumberHash), 128);
+
+        if (RegistrationDeviceId is not null && !string.Equals(RegistrationDeviceId, normalizedDeviceId, StringComparison.Ordinal))
+        {
+            throw new DomainException("registration_device_conflict", "Security user is already bound to another registration device.");
+        }
+
+        if (RegistrationPhoneNumberHash is not null && !string.Equals(RegistrationPhoneNumberHash, normalizedPhoneNumberHash, StringComparison.Ordinal))
+        {
+            throw new DomainException("registration_phone_conflict", "Security user is already bound to another registration phone number.");
+        }
+
+        RegistrationDeviceId = normalizedDeviceId;
+        RegistrationPhoneNumberHash = normalizedPhoneNumberHash;
         UpdatedAt = occurredAt;
     }
 
@@ -101,5 +126,11 @@ public sealed class SecurityUser : AggregateRoot<Guid>
         {
             throw new DomainException("security_user_disabled_terminal", "Disabled security user is terminal.");
         }
+    }
+
+    private static string? NormalizeOptional(string? value)
+    {
+        var normalized = value?.Trim();
+        return string.IsNullOrEmpty(normalized) ? null : normalized;
     }
 }

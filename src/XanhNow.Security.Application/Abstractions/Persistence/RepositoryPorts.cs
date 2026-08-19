@@ -13,6 +13,7 @@ namespace XanhNow.Security.Application.Abstractions.Persistence;
 public interface ISecurityUserRepository
 {
     ValueTask<SecurityUser?> FindByIdAsync(Guid userId, CancellationToken cancellationToken);
+    ValueTask<SecurityUser?> FindByRegistrationDeviceIdAsync(string registrationDeviceId, CancellationToken cancellationToken);
     ValueTask AddAsync(SecurityUser user, CancellationToken cancellationToken);
 }
 
