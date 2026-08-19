@@ -6,10 +6,11 @@ namespace XanhNow.Security.Application.Core;
 public sealed record DeviceContext(string? DeviceId, string? DeviceName, string? Platform, string? IpAddress, string? UserAgent);
 
 public sealed record RegisterCommand(string PhoneNumber, string Password, DeviceContext? DeviceContext) : ICommand<RegisterResult>;
-public sealed record RegisterResult(Guid UserId, string Status, string RegistrationStatus, DateTimeOffset RegisteredAtUtc);
+public sealed record AuthenticatedUserContextResult(Guid UserId, string? PhoneNumber, string? MaskedPhoneNumber);
+public sealed record RegisterResult(Guid UserId, string Status, string RegistrationStatus, DateTimeOffset RegisteredAtUtc, AuthenticatedUserContextResult? Identity);
 
 public sealed record PasswordLoginCommand(string PhoneNumber, string Password, DeviceContext? DeviceContext) : ICommand<PasswordLoginResult>;
-public sealed record PasswordLoginResult(string State, Guid? UserId, TokenPairResult? Tokens, MfaChallengeResult? Mfa, string? ReasonCode);
+public sealed record PasswordLoginResult(string State, Guid? UserId, TokenPairResult? Tokens, MfaChallengeResult? Mfa, string? ReasonCode, AuthenticatedUserContextResult? Identity);
 public sealed record TokenPairResult(string AccessToken, string RefreshToken, DateTimeOffset AccessTokenExpiresAtUtc, DateTimeOffset RefreshTokenExpiresAtUtc, string? SessionId, string TokenType = "Bearer");
 public sealed record MfaChallengeResult(string ChallengeId, string Method, DateTimeOffset ExpiresAtUtc);
 

@@ -504,6 +504,11 @@ namespace XanhNow.Security.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(128)")
                         .HasColumnName("registration_device_id");
 
+                    b.Property<string>("RegistrationPhoneNumber")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("registration_phone_number");
+
                     b.Property<string>("RegistrationPhoneNumberHash")
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)")

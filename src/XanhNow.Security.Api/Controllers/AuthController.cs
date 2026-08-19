@@ -63,7 +63,7 @@ public sealed class AuthController : ApiControllerBase
     public async Task<ActionResult<ApiResponse<RegisterResponse>>> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken)
     {
         var result = await _register.ExecuteAsync(new RegisterCommand(request.PhoneNumber, request.Password, MapDevice(request.DeviceContext)), cancellationToken);
-        return FromApplicationResult(result, x => new RegisterResponse(x.UserId, SecurityStatusContract.Active, MapRegistrationStatus(x.RegistrationStatus), x.RegisteredAtUtc));
+        return FromApplicationResult(result, x => new RegisterResponse(x.UserId, SecurityStatusContract.Active, MapRegistrationStatus(x.RegistrationStatus), x.RegisteredAtUtc, MapIdentity(x.Identity)));
     }
 
     [AllowAnonymous]
@@ -174,7 +174,11 @@ public sealed class AuthController : ApiControllerBase
             result.UserId,
             result.Tokens is null ? null : new TokenPairResponse(result.Tokens.AccessToken, result.Tokens.RefreshToken, result.Tokens.AccessTokenExpiresAtUtc, result.Tokens.RefreshTokenExpiresAtUtc, result.Tokens.TokenType),
             result.Mfa is null ? null : new MfaChallengeResponse(result.Mfa.ChallengeId, result.Mfa.Method, result.Mfa.ExpiresAtUtc),
-            result.ReasonCode);
+            result.ReasonCode,
+            MapIdentity(result.Identity));
+
+    private static AuthenticatedUserContextResponse? MapIdentity(AuthenticatedUserContextResult? identity)
+        => identity is null ? null : new AuthenticatedUserContextResponse(identity.UserId, identity.PhoneNumber, identity.MaskedPhoneNumber);
 
     private static StepUpChallengeResponse MapStepUpChallenge(StepUpChallengeResult result)
         => new(result.ChallengeId, result.ExternalUserId, result.DeviceId, result.DeviceKeyId, result.Purpose, result.ExternalTransactionId, result.TransactionDigest, result.ExpiresAtUtc, result.CodeLength, result.MaxAttempts);

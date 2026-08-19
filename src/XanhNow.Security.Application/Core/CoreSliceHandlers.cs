@@ -30,6 +30,49 @@ internal static class CoreSliceDefaults
     public const string AppInstallPhoneConflictCode = "security.app_install_phone_conflict";
 }
 
+internal static class AuthenticatedUserContexts
+{
+    public static AuthenticatedUserContextResult From(Guid userId, string? phoneNumber)
+    {
+        var normalizedPhone = NormalizePhoneNumber(phoneNumber);
+        return new AuthenticatedUserContextResult(userId, normalizedPhone, MaskPhoneNumber(normalizedPhone));
+    }
+
+    public static AuthenticatedUserContextResult From(SecurityUser? user, Guid userId)
+        => From(userId, user?.RegistrationPhoneNumber);
+
+    public static string? NormalizePhoneNumber(string? phoneNumber)
+    {
+        var normalized = phoneNumber?.Trim().Replace(" ", string.Empty, StringComparison.Ordinal).Replace("-", string.Empty, StringComparison.Ordinal);
+        if (string.IsNullOrEmpty(normalized))
+        {
+            return null;
+        }
+
+        if (normalized.StartsWith("+", StringComparison.Ordinal))
+        {
+            return normalized;
+        }
+
+        if (normalized.StartsWith("84", StringComparison.Ordinal))
+        {
+            return "+" + normalized;
+        }
+
+        return normalized.StartsWith("0", StringComparison.Ordinal) ? "+84" + normalized[1..] : normalized;
+    }
+
+    private static string? MaskPhoneNumber(string? phoneNumber)
+    {
+        if (string.IsNullOrWhiteSpace(phoneNumber) || phoneNumber.Length <= 4)
+        {
+            return phoneNumber;
+        }
+
+        return new string('*', Math.Max(0, phoneNumber.Length - 4)) + phoneNumber[^4..];
+    }
+}
+
 public abstract class CoreSliceHandler
 {
     private readonly IAuditIntentWriter _audit;
@@ -66,7 +109,8 @@ public sealed class RegisterCommandHandler : CoreSliceHandler, IRequestHandler<R
     public async Task<Result<RegisterResult>> HandleAsync(RegisterCommand request, CancellationToken cancellationToken)
     {
         var registrationDeviceId = NormalizeRegistrationDeviceId(request.DeviceContext?.DeviceId);
-        var registrationPhoneHash = HashPhoneNumber(request.PhoneNumber);
+        var registrationPhoneNumber = AuthenticatedUserContexts.NormalizePhoneNumber(request.PhoneNumber) ?? request.PhoneNumber.Trim();
+        var registrationPhoneHash = HashPhoneNumber(registrationPhoneNumber);
 
         if (registrationDeviceId is not null)
         {
@@ -91,13 +135,13 @@ public sealed class RegisterCommandHandler : CoreSliceHandler, IRequestHandler<R
         var existing = await _users.FindByIdAsync(child.Value.UserId, cancellationToken);
         if (existing is null)
         {
-            await _users.AddAsync(SecurityUser.CreatePendingPasskey(child.Value.UserId, Now, registrationDeviceId, registrationPhoneHash), cancellationToken);
+            await _users.AddAsync(SecurityUser.CreatePendingPasskey(child.Value.UserId, Now, registrationDeviceId, registrationPhoneNumber, registrationPhoneHash), cancellationToken);
         }
         else if (registrationDeviceId is not null)
         {
             try
             {
-                existing.BindRegistrationDevice(registrationDeviceId, registrationPhoneHash, Now);
+                existing.BindRegistrationDevice(registrationDeviceId, registrationPhoneNumber, registrationPhoneHash, Now);
             }
             catch (DomainException ex)
             {
@@ -108,7 +152,7 @@ public sealed class RegisterCommandHandler : CoreSliceHandler, IRequestHandler<R
 
         await AuditAsync(child.Value.UserId, "auth.register", "succeeded", "password_registered_passkey_required", cancellationToken);
         await _unitOfWork.CommitAsync(cancellationToken);
-        return Result<RegisterResult>.Success(new RegisterResult(child.Value.UserId, "Active", UserRegistrationStatus.PendingPasskey.ToString(), Now));
+        return Result<RegisterResult>.Success(new RegisterResult(child.Value.UserId, "Active", UserRegistrationStatus.PendingPasskey.ToString(), Now, AuthenticatedUserContexts.From(child.Value.UserId, registrationPhoneNumber)));
     }
 
     private static string? NormalizeRegistrationDeviceId(string? deviceId)
@@ -124,20 +168,7 @@ public sealed class RegisterCommandHandler : CoreSliceHandler, IRequestHandler<R
     }
 
     private static string NormalizePhoneNumberForBinding(string phoneNumber)
-    {
-        var normalized = phoneNumber.Trim().Replace(" ", string.Empty, StringComparison.Ordinal).Replace("-", string.Empty, StringComparison.Ordinal);
-        if (normalized.StartsWith("+", StringComparison.Ordinal))
-        {
-            return normalized;
-        }
-
-        if (normalized.StartsWith("84", StringComparison.Ordinal))
-        {
-            return "+" + normalized;
-        }
-
-        return normalized.StartsWith("0", StringComparison.Ordinal) ? "+84" + normalized[1..] : normalized;
-    }
+        => AuthenticatedUserContexts.NormalizePhoneNumber(phoneNumber) ?? phoneNumber.Trim();
 }
 
 public sealed class PasswordLoginCommandHandler : CoreSliceHandler, IRequestHandler<PasswordLoginCommand, PasswordLoginResult>
@@ -167,14 +198,15 @@ public sealed class PasswordLoginCommandHandler : CoreSliceHandler, IRequestHand
             return ChildFailure<PasswordLoginResult>(login.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Auth Login password login failed.", true));
         }
 
-        var registration = await EnsureRegistrationCompletedAsync(login.Value.UserId, cancellationToken);
+        var identity = AuthenticatedUserContexts.From(login.Value.UserId, request.PhoneNumber);
+        var registration = await EnsureRegistrationCompletedAsync(login.Value.UserId, identity, cancellationToken);
         if (registration is not null)
         {
             await AuditAsync(login.Value.UserId, "auth.password_login", "blocked", CoreSliceDefaults.RegistrationIncompleteReason, cancellationToken);
             return Result<PasswordLoginResult>.Success(registration);
         }
 
-        var mfa = await RequireSmartOtpIfEnabledAsync(login.Value.UserId, cancellationToken);
+        var mfa = await RequireSmartOtpIfEnabledAsync(login.Value.UserId, identity, cancellationToken);
         if (mfa is not null)
         {
             await AuditAsync(login.Value.UserId, "auth.password_login", "blocked", CoreSliceDefaults.SmartOtpRequiredReason, cancellationToken);
@@ -189,27 +221,27 @@ public sealed class PasswordLoginCommandHandler : CoreSliceHandler, IRequestHand
         }
 
         await AuditAsync(login.Value.UserId, "auth.password_login", "succeeded", "login_completed", cancellationToken);
-        return Result<PasswordLoginResult>.Success(new PasswordLoginResult("Completed", login.Value.UserId, ToTokenPair(token.Value), null, null));
+        return Result<PasswordLoginResult>.Success(new PasswordLoginResult("Completed", login.Value.UserId, ToTokenPair(token.Value), null, null, identity));
     }
 
     internal static TokenPairResult ToTokenPair(JwtIssueResult token) => new(token.AccessToken, token.RefreshTokenReference, token.ExpiresAt, token.RefreshTokenExpiresAt, token.SessionId);
 
-    internal async ValueTask<PasswordLoginResult?> RequireSmartOtpIfEnabledAsync(Guid userId, CancellationToken cancellationToken)
+    internal async ValueTask<PasswordLoginResult?> RequireSmartOtpIfEnabledAsync(Guid userId, AuthenticatedUserContextResult? identity, CancellationToken cancellationToken)
     {
         var profile = await _profiles.FindByUserIdAsync(userId, cancellationToken);
         return profile?.SmartOtpDeviceCount > 0
-            ? new PasswordLoginResult("MfaRequired", userId, null, new MfaChallengeResult(string.Empty, CoreSliceDefaults.SmartOtpMfaMethod, Now.AddMinutes(5)), CoreSliceDefaults.SmartOtpRequiredReason)
+            ? new PasswordLoginResult("MfaRequired", userId, null, new MfaChallengeResult(string.Empty, CoreSliceDefaults.SmartOtpMfaMethod, Now.AddMinutes(5)), CoreSliceDefaults.SmartOtpRequiredReason, identity)
             : null;
     }
 
-    internal async ValueTask<PasswordLoginResult?> EnsureRegistrationCompletedAsync(Guid userId, CancellationToken cancellationToken)
+    internal async ValueTask<PasswordLoginResult?> EnsureRegistrationCompletedAsync(Guid userId, AuthenticatedUserContextResult? identity, CancellationToken cancellationToken)
     {
         var user = await _users.FindByIdAsync(userId, cancellationToken);
         if (user is null)
         {
             await _users.AddAsync(SecurityUser.CreatePendingPasskey(userId, Now), cancellationToken);
             await _unitOfWork.CommitAsync(cancellationToken);
-            return new PasswordLoginResult("PasskeyRequired", userId, null, null, CoreSliceDefaults.RegistrationIncompleteReason);
+            return new PasswordLoginResult("PasskeyRequired", userId, null, null, CoreSliceDefaults.RegistrationIncompleteReason, identity);
         }
 
         if (user.IsRegistrationCompleted)
@@ -217,7 +249,7 @@ public sealed class PasswordLoginCommandHandler : CoreSliceHandler, IRequestHand
             return null;
         }
 
-        return new PasswordLoginResult("PasskeyRequired", userId, null, null, CoreSliceDefaults.RegistrationIncompleteReason);
+        return new PasswordLoginResult("PasskeyRequired", userId, null, null, CoreSliceDefaults.RegistrationIncompleteReason, identity ?? AuthenticatedUserContexts.From(user, userId));
     }
 }
 
@@ -445,20 +477,21 @@ public sealed class FinishPasskeyLoginCommandHandler : IRequestHandler<FinishPas
         }
 
         var user = await _users.FindByIdAsync(passkey.Value.UserId, cancellationToken);
+        var identity = AuthenticatedUserContexts.From(user, passkey.Value.UserId);
         if (user is not null && !user.IsRegistrationCompleted)
         {
-            return Result<PasswordLoginResult>.Success(new PasswordLoginResult("PasskeyRequired", passkey.Value.UserId, null, null, CoreSliceDefaults.RegistrationIncompleteReason));
+            return Result<PasswordLoginResult>.Success(new PasswordLoginResult("PasskeyRequired", passkey.Value.UserId, null, null, CoreSliceDefaults.RegistrationIncompleteReason, identity));
         }
 
         var profile = await _profiles.FindByUserIdAsync(passkey.Value.UserId, cancellationToken);
         if (profile?.SmartOtpDeviceCount > 0)
         {
-            return Result<PasswordLoginResult>.Success(new PasswordLoginResult("MfaRequired", passkey.Value.UserId, null, new MfaChallengeResult(string.Empty, CoreSliceDefaults.SmartOtpMfaMethod, _clock.UtcNow.AddMinutes(5)), CoreSliceDefaults.SmartOtpRequiredReason));
+            return Result<PasswordLoginResult>.Success(new PasswordLoginResult("MfaRequired", passkey.Value.UserId, null, new MfaChallengeResult(string.Empty, CoreSliceDefaults.SmartOtpMfaMethod, _clock.UtcNow.AddMinutes(5)), CoreSliceDefaults.SmartOtpRequiredReason, identity));
         }
 
         var token = await _jwt.IssueAsync(new JwtIssueRequest(passkey.Value.UserId, CoreSliceDefaults.DefaultAudience, CoreSliceDefaults.DefaultScopes), cancellationToken);
         return token.IsSuccess && token.Value is not null
-            ? Result<PasswordLoginResult>.Success(new PasswordLoginResult("Completed", passkey.Value.UserId, PasswordLoginCommandHandler.ToTokenPair(token.Value), null, null))
+            ? Result<PasswordLoginResult>.Success(new PasswordLoginResult("Completed", passkey.Value.UserId, PasswordLoginCommandHandler.ToTokenPair(token.Value), null, null, identity))
             : CoreSliceHandler.ChildFailure<PasswordLoginResult>(token.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "JWT issue failed.", true));
     }
 }
@@ -683,12 +716,14 @@ public sealed class CompleteLoginSmartOtpCommandHandler : CoreSliceHandler, IReq
 {
     private readonly ISmartOtpClient _smartOtp;
     private readonly IJwtTokenClient _jwt;
+    private readonly ISecurityUserRepository _users;
 
-    public CompleteLoginSmartOtpCommandHandler(ISmartOtpClient smartOtp, IJwtTokenClient jwt, IAuditIntentWriter audit, IClock clock)
+    public CompleteLoginSmartOtpCommandHandler(ISmartOtpClient smartOtp, IJwtTokenClient jwt, ISecurityUserRepository users, IAuditIntentWriter audit, IClock clock)
         : base(audit, clock)
     {
         _smartOtp = smartOtp;
         _jwt = jwt;
+        _users = users;
     }
 
     public async Task<Result<PasswordLoginResult>> HandleAsync(CompleteLoginSmartOtpCommand request, CancellationToken cancellationToken)
@@ -708,6 +743,7 @@ public sealed class CompleteLoginSmartOtpCommandHandler : CoreSliceHandler, IReq
         }
 
         await AuditAsync(request.UserId, "auth.login_smart_otp", "succeeded", "login_completed", cancellationToken);
-        return Result<PasswordLoginResult>.Success(new PasswordLoginResult("Completed", request.UserId, PasswordLoginCommandHandler.ToTokenPair(token.Value), null, null));
+        var user = await _users.FindByIdAsync(request.UserId, cancellationToken);
+        return Result<PasswordLoginResult>.Success(new PasswordLoginResult("Completed", request.UserId, PasswordLoginCommandHandler.ToTokenPair(token.Value), null, null, AuthenticatedUserContexts.From(user, request.UserId)));
     }
 }

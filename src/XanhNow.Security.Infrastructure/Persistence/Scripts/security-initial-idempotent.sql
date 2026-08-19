@@ -195,6 +195,7 @@ BEGIN
         passkey_registered_at_utc timestamp with time zone,
         registration_completed_at_utc timestamp with time zone,
         registration_device_id character varying(128),
+        registration_phone_number character varying(32),
         registration_phone_number_hash character varying(128),
         created_at timestamp with time zone NOT NULL,
         updated_at timestamp with time zone NOT NULL,
