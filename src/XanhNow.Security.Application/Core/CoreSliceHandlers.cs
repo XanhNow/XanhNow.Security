@@ -7,6 +7,7 @@ using XanhNow.Security.Application.Abstractions.ChildApps.AuthLogin;
 using XanhNow.Security.Application.Abstractions.ChildApps.Jwt;
 using XanhNow.Security.Application.Abstractions.ChildApps.Passkey;
 using XanhNow.Security.Application.Abstractions.ChildApps.SmartOtp;
+using XanhNow.Security.Application.Abstractions.Outbox;
 using XanhNow.Security.Application.Abstractions.Persistence;
 using XanhNow.Security.Application.Abstractions.Time;
 using XanhNow.Security.Application.Common.ChildApps;
@@ -99,18 +100,33 @@ public abstract class CoreSliceHandler
     public static Result<T> ChildFailure<T>(ChildCallError error) => Result<T>.Failure(ChildAppErrorMapper.ToApplicationError(error));
 }
 
+internal static class SecurityEventOutbox
+{
+    public static ValueTask AppendAsync(IOutboxIntentWriter outbox, string eventType, string aggregateType, Guid aggregateId, object payload, DateTimeOffset occurredAt, CancellationToken cancellationToken)
+        => outbox.AppendAsync(new OutboxIntent(
+            Guid.NewGuid(),
+            eventType,
+            aggregateType,
+            aggregateId,
+            JsonSerializer.Serialize(payload),
+            occurredAt),
+            cancellationToken);
+}
+
 public sealed class RegisterCommandHandler : CoreSliceHandler, IRequestHandler<RegisterCommand, RegisterResult>
 {
     private readonly IAuthLoginClient _authLogin;
     private readonly ISecurityUserRepository _users;
     private readonly ILocalUnitOfWork _unitOfWork;
+    private readonly IOutboxIntentWriter _outbox;
 
-    public RegisterCommandHandler(IAuthLoginClient authLogin, ISecurityUserRepository users, ILocalUnitOfWork unitOfWork, IAuditIntentWriter audit, IClock clock)
+    public RegisterCommandHandler(IAuthLoginClient authLogin, ISecurityUserRepository users, ILocalUnitOfWork unitOfWork, IOutboxIntentWriter outbox, IAuditIntentWriter audit, IClock clock)
         : base(audit, clock)
     {
         _authLogin = authLogin;
         _users = users;
         _unitOfWork = unitOfWork;
+        _outbox = outbox;
     }
 
     public async Task<Result<RegisterResult>> HandleAsync(RegisterCommand request, CancellationToken cancellationToken)
@@ -158,6 +174,13 @@ public sealed class RegisterCommandHandler : CoreSliceHandler, IRequestHandler<R
         }
 
         await AuditAsync(child.Value.UserId, "auth.register", "succeeded", "password_registered_passkey_required", cancellationToken);
+        await SecurityEventOutbox.AppendAsync(_outbox, "SecurityUserRegistered", "SecurityUser", child.Value.UserId, new
+        {
+            child.Value.UserId,
+            PhoneNumber = registrationPhoneNumber,
+            RegistrationStatus = UserRegistrationStatus.PendingPasskey.ToString(),
+            OccurredAtUtc = Now
+        }, Now, cancellationToken);
         await _unitOfWork.CommitAsync(cancellationToken);
         return Result<RegisterResult>.Success(new RegisterResult(child.Value.UserId, "Active", UserRegistrationStatus.PendingPasskey.ToString(), Now, AuthenticatedUserContexts.From(child.Value.UserId, registrationPhoneNumber)));
     }
@@ -177,8 +200,9 @@ public sealed class PasswordLoginCommandHandler : CoreSliceHandler, IRequestHand
     private readonly ISecurityUserRepository _users;
     private readonly ISecurityProfileReader _profiles;
     private readonly ILocalUnitOfWork _unitOfWork;
+    private readonly IOutboxIntentWriter _outbox;
 
-    public PasswordLoginCommandHandler(IAuthLoginClient authLogin, IJwtTokenClient jwt, ISecurityUserRepository users, ISecurityProfileReader profiles, ILocalUnitOfWork unitOfWork, IAuditIntentWriter audit, IClock clock)
+    public PasswordLoginCommandHandler(IAuthLoginClient authLogin, IJwtTokenClient jwt, ISecurityUserRepository users, ISecurityProfileReader profiles, ILocalUnitOfWork unitOfWork, IOutboxIntentWriter outbox, IAuditIntentWriter audit, IClock clock)
         : base(audit, clock)
     {
         _authLogin = authLogin;
@@ -186,6 +210,7 @@ public sealed class PasswordLoginCommandHandler : CoreSliceHandler, IRequestHand
         _users = users;
         _profiles = profiles;
         _unitOfWork = unitOfWork;
+        _outbox = outbox;
     }
 
     public async Task<Result<PasswordLoginResult>> HandleAsync(PasswordLoginCommand request, CancellationToken cancellationToken)
@@ -220,6 +245,14 @@ public sealed class PasswordLoginCommandHandler : CoreSliceHandler, IRequestHand
         }
 
         await AuditAsync(login.Value.UserId, "auth.password_login", "succeeded", "login_completed", cancellationToken);
+        await SecurityEventOutbox.AppendAsync(_outbox, "SecurityPasswordLoginCompleted", "SecurityUser", login.Value.UserId, new
+        {
+            login.Value.UserId,
+            token.Value.SessionId,
+            Method = "password",
+            OccurredAtUtc = Now
+        }, Now, cancellationToken);
+        await _unitOfWork.CommitAsync(cancellationToken);
         return Result<PasswordLoginResult>.Success(new PasswordLoginResult("Completed", login.Value.UserId, ToTokenPair(token.Value), null, null, identity));
     }
 
@@ -283,9 +316,16 @@ public sealed class RefreshSessionCommandHandler : IRequestHandler<RefreshSessio
 public sealed class LogoutSessionCommandHandler : CoreSliceHandler, IRequestHandler<LogoutSessionCommand, LogoutSessionResult>
 {
     private readonly IJwtTokenClient _jwt;
+    private readonly IOutboxIntentWriter _outbox;
+    private readonly ILocalUnitOfWork _unitOfWork;
 
-    public LogoutSessionCommandHandler(IJwtTokenClient jwt, IAuditIntentWriter audit, IClock clock)
-        : base(audit, clock) => _jwt = jwt;
+    public LogoutSessionCommandHandler(IJwtTokenClient jwt, IOutboxIntentWriter outbox, ILocalUnitOfWork unitOfWork, IAuditIntentWriter audit, IClock clock)
+        : base(audit, clock)
+    {
+        _jwt = jwt;
+        _outbox = outbox;
+        _unitOfWork = unitOfWork;
+    }
 
     public async Task<Result<LogoutSessionResult>> HandleAsync(LogoutSessionCommand request, CancellationToken cancellationToken)
     {
@@ -296,6 +336,14 @@ public sealed class LogoutSessionCommandHandler : CoreSliceHandler, IRequestHand
         }
 
         await AuditAsync(request.UserId, "session.logout", "succeeded", request.ReasonCode, cancellationToken);
+        await SecurityEventOutbox.AppendAsync(_outbox, "SecuritySessionLoggedOut", "SecurityUser", request.UserId, new
+        {
+            request.UserId,
+            request.SessionId,
+            request.ReasonCode,
+            OccurredAtUtc = Now
+        }, Now, cancellationToken);
+        await _unitOfWork.CommitAsync(cancellationToken);
         return Result<LogoutSessionResult>.Success(new LogoutSessionResult(request.SessionId, "Revoked", Now));
     }
 }
@@ -333,14 +381,16 @@ public sealed class FinishPasskeyRegistrationCommandHandler : IRequestHandler<Fi
     private readonly ISecurityUserRepository _users;
     private readonly ISecurityProfileWriter _profiles;
     private readonly ILocalUnitOfWork _unitOfWork;
+    private readonly IOutboxIntentWriter _outbox;
     private readonly IClock _clock;
 
-    public FinishPasskeyRegistrationCommandHandler(IPasskeyClient passkey, ISecurityUserRepository users, ISecurityProfileWriter profiles, ILocalUnitOfWork unitOfWork, IClock clock)
+    public FinishPasskeyRegistrationCommandHandler(IPasskeyClient passkey, ISecurityUserRepository users, ISecurityProfileWriter profiles, ILocalUnitOfWork unitOfWork, IOutboxIntentWriter outbox, IClock clock)
     {
         _passkey = passkey;
         _users = users;
         _profiles = profiles;
         _unitOfWork = unitOfWork;
+        _outbox = outbox;
         _clock = clock;
     }
 
@@ -362,8 +412,16 @@ public sealed class FinishPasskeyRegistrationCommandHandler : IRequestHandler<Fi
             return CoreSliceHandler.ChildFailure<PasskeyStateResult>(child.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Passkey finish failed.", true));
         }
 
-        await MarkRegistrationPasskeyCompletedAsync(request.UserId, _users, _profiles, _unitOfWork, _clock.UtcNow, cancellationToken);
-        return Result<PasskeyStateResult>.Success(new PasskeyStateResult(child.Value.CredentialId, true, _clock.UtcNow));
+        var completedAt = _clock.UtcNow;
+        await SecurityEventOutbox.AppendAsync(_outbox, "SecurityPasskeyRegistered", "SecurityUser", request.UserId, new
+        {
+            request.UserId,
+            child.Value.CredentialId,
+            request.CeremonyId,
+            OccurredAtUtc = completedAt
+        }, completedAt, cancellationToken);
+        await MarkRegistrationPasskeyCompletedAsync(request.UserId, _users, _profiles, _unitOfWork, completedAt, cancellationToken);
+        return Result<PasskeyStateResult>.Success(new PasskeyStateResult(child.Value.CredentialId, true, completedAt));
     }
 
     internal static async ValueTask MarkRegistrationPasskeyCompletedAsync(Guid userId, ISecurityUserRepository users, ISecurityProfileWriter profiles, ILocalUnitOfWork unitOfWork, DateTimeOffset completedAt, CancellationToken cancellationToken)
@@ -413,20 +471,36 @@ public sealed class ListPasskeysQueryHandler : IRequestHandler<ListPasskeysQuery
 public sealed class RevokePasskeyCommandHandler : IRequestHandler<RevokePasskeyCommand, PasskeyStateResult>
 {
     private readonly IPasskeyClient _passkey;
+    private readonly IOutboxIntentWriter _outbox;
+    private readonly ILocalUnitOfWork _unitOfWork;
     private readonly IClock _clock;
 
-    public RevokePasskeyCommandHandler(IPasskeyClient passkey, IClock clock)
+    public RevokePasskeyCommandHandler(IPasskeyClient passkey, IOutboxIntentWriter outbox, ILocalUnitOfWork unitOfWork, IClock clock)
     {
         _passkey = passkey;
+        _outbox = outbox;
+        _unitOfWork = unitOfWork;
         _clock = clock;
     }
 
     public async Task<Result<PasskeyStateResult>> HandleAsync(RevokePasskeyCommand request, CancellationToken cancellationToken)
     {
         var child = await _passkey.RevokeAsync(request.UserId, request.PasskeyId, cancellationToken);
-        return child.IsSuccess
-            ? Result<PasskeyStateResult>.Success(new PasskeyStateResult(request.PasskeyId, false, _clock.UtcNow))
-            : CoreSliceHandler.ChildFailure<PasskeyStateResult>(child.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Passkey revoke failed.", true));
+        if (child.IsFailure)
+        {
+            return CoreSliceHandler.ChildFailure<PasskeyStateResult>(child.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Passkey revoke failed.", true));
+        }
+
+        var revokedAt = _clock.UtcNow;
+        await SecurityEventOutbox.AppendAsync(_outbox, "SecurityPasskeyRevoked", "SecurityUser", request.UserId, new
+        {
+            request.UserId,
+            request.PasskeyId,
+            request.ReasonCode,
+            OccurredAtUtc = revokedAt
+        }, revokedAt, cancellationToken);
+        await _unitOfWork.CommitAsync(cancellationToken);
+        return Result<PasskeyStateResult>.Success(new PasskeyStateResult(request.PasskeyId, false, revokedAt));
     }
 }
 
@@ -482,14 +556,18 @@ public sealed class FinishPasskeyLoginCommandHandler : IRequestHandler<FinishPas
     private readonly IJwtTokenClient _jwt;
     private readonly ISecurityUserRepository _users;
     private readonly ISecurityProfileReader _profiles;
+    private readonly IOutboxIntentWriter _outbox;
+    private readonly ILocalUnitOfWork _unitOfWork;
     private readonly IClock _clock;
 
-    public FinishPasskeyLoginCommandHandler(IPasskeyClient passkey, IJwtTokenClient jwt, ISecurityUserRepository users, ISecurityProfileReader profiles, IClock clock)
+    public FinishPasskeyLoginCommandHandler(IPasskeyClient passkey, IJwtTokenClient jwt, ISecurityUserRepository users, ISecurityProfileReader profiles, IOutboxIntentWriter outbox, ILocalUnitOfWork unitOfWork, IClock clock)
     {
         _passkey = passkey;
         _jwt = jwt;
         _users = users;
         _profiles = profiles;
+        _outbox = outbox;
+        _unitOfWork = unitOfWork;
         _clock = clock;
     }
 
@@ -515,9 +593,22 @@ public sealed class FinishPasskeyLoginCommandHandler : IRequestHandler<FinishPas
         }
 
         var token = await _jwt.IssueAsync(new JwtIssueRequest(passkey.Value.UserId, CoreSliceDefaults.DefaultAudience, CoreSliceDefaults.DefaultScopes), cancellationToken);
-        return token.IsSuccess && token.Value is not null
-            ? Result<PasswordLoginResult>.Success(new PasswordLoginResult("Completed", passkey.Value.UserId, PasswordLoginCommandHandler.ToTokenPair(token.Value), null, null, identity))
-            : CoreSliceHandler.ChildFailure<PasswordLoginResult>(token.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "JWT issue failed.", true));
+        if (token.IsFailure || token.Value is null)
+        {
+            return CoreSliceHandler.ChildFailure<PasswordLoginResult>(token.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "JWT issue failed.", true));
+        }
+
+        var occurredAt = _clock.UtcNow;
+        await SecurityEventOutbox.AppendAsync(_outbox, "SecurityPasskeyLoginCompleted", "SecurityUser", passkey.Value.UserId, new
+        {
+            passkey.Value.UserId,
+            passkey.Value.CredentialId,
+            token.Value.SessionId,
+            Method = "passkey",
+            OccurredAtUtc = occurredAt
+        }, occurredAt, cancellationToken);
+        await _unitOfWork.CommitAsync(cancellationToken);
+        return Result<PasswordLoginResult>.Success(new PasswordLoginResult("Completed", passkey.Value.UserId, PasswordLoginCommandHandler.ToTokenPair(token.Value), null, null, identity));
     }
 }
 
@@ -565,14 +656,16 @@ public sealed class FinishRegistrationPasskeyCommandHandler : IRequestHandler<Fi
     private readonly ISecurityUserRepository _users;
     private readonly ISecurityProfileWriter _profiles;
     private readonly ILocalUnitOfWork _unitOfWork;
+    private readonly IOutboxIntentWriter _outbox;
     private readonly IClock _clock;
 
-    public FinishRegistrationPasskeyCommandHandler(IPasskeyClient passkey, ISecurityUserRepository users, ISecurityProfileWriter profiles, ILocalUnitOfWork unitOfWork, IClock clock)
+    public FinishRegistrationPasskeyCommandHandler(IPasskeyClient passkey, ISecurityUserRepository users, ISecurityProfileWriter profiles, ILocalUnitOfWork unitOfWork, IOutboxIntentWriter outbox, IClock clock)
     {
         _passkey = passkey;
         _users = users;
         _profiles = profiles;
         _unitOfWork = unitOfWork;
+        _outbox = outbox;
         _clock = clock;
     }
 
@@ -601,6 +694,14 @@ public sealed class FinishRegistrationPasskeyCommandHandler : IRequestHandler<Fi
         }
 
         var completedAt = _clock.UtcNow;
+        await SecurityEventOutbox.AppendAsync(_outbox, "SecurityPasskeyRegistered", "SecurityUser", request.UserId, new
+        {
+            request.UserId,
+            child.Value.CredentialId,
+            request.CeremonyId,
+            RegistrationStatus = UserRegistrationStatus.Completed.ToString(),
+            OccurredAtUtc = completedAt
+        }, completedAt, cancellationToken);
         await FinishPasskeyRegistrationCommandHandler.MarkRegistrationPasskeyCompletedAsync(request.UserId, _users, _profiles, _unitOfWork, completedAt, cancellationToken);
         return Result<FinishRegistrationPasskeyResult>.Success(new FinishRegistrationPasskeyResult(request.UserId, UserRegistrationStatus.Completed.ToString(), completedAt));
     }
@@ -631,13 +732,15 @@ public sealed class ConfirmSmartOtpEnrollmentCommandHandler : IRequestHandler<Co
     private readonly ISmartOtpClient _smartOtp;
     private readonly ISecurityProfileWriter _profiles;
     private readonly ILocalUnitOfWork _unitOfWork;
+    private readonly IOutboxIntentWriter _outbox;
     private readonly IClock _clock;
 
-    public ConfirmSmartOtpEnrollmentCommandHandler(ISmartOtpClient smartOtp, ISecurityProfileWriter profiles, ILocalUnitOfWork unitOfWork, IClock clock)
+    public ConfirmSmartOtpEnrollmentCommandHandler(ISmartOtpClient smartOtp, ISecurityProfileWriter profiles, ILocalUnitOfWork unitOfWork, IOutboxIntentWriter outbox, IClock clock)
     {
         _smartOtp = smartOtp;
         _profiles = profiles;
         _unitOfWork = unitOfWork;
+        _outbox = outbox;
         _clock = clock;
     }
 
@@ -663,6 +766,14 @@ public sealed class ConfirmSmartOtpEnrollmentCommandHandler : IRequestHandler<Co
                 profile.ApplySnapshot(profile.PasskeyCount, Math.Max(profile.SmartOtpDeviceCount, 1), profile.PasswordLoginEnabled, _clock.UtcNow);
             }
 
+            await SecurityEventOutbox.AppendAsync(_outbox, "SecuritySmartOtpDeviceBound", "SecurityUser", request.UserId, new
+            {
+                request.UserId,
+                child.Value.DeviceId,
+                child.Value.DeviceKeyId,
+                child.Value.Status,
+                OccurredAtUtc = child.Value.BoundAtUtc
+            }, child.Value.BoundAtUtc, cancellationToken);
             await _unitOfWork.CommitAsync(cancellationToken);
         }
 
@@ -742,13 +853,17 @@ public sealed class CompleteLoginSmartOtpCommandHandler : CoreSliceHandler, IReq
     private readonly ISmartOtpClient _smartOtp;
     private readonly IJwtTokenClient _jwt;
     private readonly ISecurityUserRepository _users;
+    private readonly IOutboxIntentWriter _outbox;
+    private readonly ILocalUnitOfWork _unitOfWork;
 
-    public CompleteLoginSmartOtpCommandHandler(ISmartOtpClient smartOtp, IJwtTokenClient jwt, ISecurityUserRepository users, IAuditIntentWriter audit, IClock clock)
+    public CompleteLoginSmartOtpCommandHandler(ISmartOtpClient smartOtp, IJwtTokenClient jwt, ISecurityUserRepository users, IOutboxIntentWriter outbox, ILocalUnitOfWork unitOfWork, IAuditIntentWriter audit, IClock clock)
         : base(audit, clock)
     {
         _smartOtp = smartOtp;
         _jwt = jwt;
         _users = users;
+        _outbox = outbox;
+        _unitOfWork = unitOfWork;
     }
 
     public async Task<Result<PasswordLoginResult>> HandleAsync(CompleteLoginSmartOtpCommand request, CancellationToken cancellationToken)
@@ -768,6 +883,16 @@ public sealed class CompleteLoginSmartOtpCommandHandler : CoreSliceHandler, IReq
         }
 
         await AuditAsync(request.UserId, "auth.login_smart_otp", "succeeded", "login_completed", cancellationToken);
+        await SecurityEventOutbox.AppendAsync(_outbox, "SecuritySmartOtpLoginCompleted", "SecurityUser", request.UserId, new
+        {
+            request.UserId,
+            request.ChallengeId,
+            request.DeviceId,
+            token.Value.SessionId,
+            Method = CoreSliceDefaults.SmartOtpMfaMethod,
+            OccurredAtUtc = Now
+        }, Now, cancellationToken);
+        await _unitOfWork.CommitAsync(cancellationToken);
         var user = await _users.FindByIdAsync(request.UserId, cancellationToken);
         return Result<PasswordLoginResult>.Success(new PasswordLoginResult("Completed", request.UserId, PasswordLoginCommandHandler.ToTokenPair(token.Value), null, null, AuthenticatedUserContexts.From(user, request.UserId)));
     }

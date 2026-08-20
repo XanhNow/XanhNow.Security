@@ -28,14 +28,16 @@ public sealed class VaultIntegrationOptions
 {
     public string Address { get; set; } = string.Empty;
     public string AuthMount { get; set; } = "approle";
-    public string RoleIdEnvironmentVariable { get; set; } = "VAULT_ROLE_ID";
-    public string SecretIdEnvironmentVariable { get; set; } = "VAULT_SECRET_ID";
+    public string RoleIdEnvironmentVariable { get; set; } = "XANHNOW_SECURITY_VAULT_ROLE_ID";
+    public string SecretIdEnvironmentVariable { get; set; } = "XANHNOW_SECURITY_VAULT_SECRET_ID";
     public string RoleIdFile { get; set; } = string.Empty;
     public string SecretIdFile { get; set; } = string.Empty;
     public string? CaCertificatePath { get; set; }
     public string? CaCertFile { get; set; }
     public string GrantSigningKeyPath { get; set; } = "kv/xanhnow/security/grants/signing";
     public string GrantSigningKeyField { get; set; } = "signing_key";
+    public string PostgresApiSecretPath { get; set; } = "kv/xanhnow/security/postgres/api";
+    public string PostgresConnectionStringField { get; set; } = "connection_string";
 }
 
 public sealed class RedisIntegrationOptions

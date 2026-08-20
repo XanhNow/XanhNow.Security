@@ -16,6 +16,8 @@ using XanhNow.Security.Application.Common.Requests;
 using XanhNow.Security.Application.Core;
 using XanhNow.Security.Application.Abstractions.Context;
 using XanhNow.Security.Infrastructure.Integration;
+using XanhNow.Security.Infrastructure.Integration.Options;
+using XanhNow.Security.Infrastructure.Integration.Vault;
 using XanhNow.Security.Infrastructure.Persistence;
 
 namespace XanhNow.Security.Api.Composition;
@@ -53,7 +55,7 @@ public static class SecurityApiServiceCollectionExtensions
 
         services.AddSecurityPersistence(options =>
         {
-            options.ConnectionString = configuration.GetConnectionString("SecurityDb") ?? configuration["SecurityPersistence:ConnectionString"];
+            options.ConnectionString = ResolveSecurityDbConnectionString(configuration);
             options.EnableDetailedErrors = environment.IsDevelopment();
             options.EnableSensitiveDataLogging = false;
         });
@@ -139,6 +141,32 @@ public static class SecurityApiServiceCollectionExtensions
             });
 
         return services;
+    }
+
+    private static string? ResolveSecurityDbConnectionString(IConfiguration configuration)
+    {
+        var configured = configuration.GetConnectionString("SecurityDb") ?? configuration["SecurityPersistence:ConnectionString"];
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            return configured;
+        }
+
+        var integrationOptions = new SecurityIntegrationOptions();
+        configuration.GetSection("SecurityIntegration").Bind(integrationOptions);
+        if (string.IsNullOrWhiteSpace(integrationOptions.Vault.Address))
+        {
+            return null;
+        }
+
+        var vault = new VaultSecretReader(integrationOptions);
+        return vault.ReadFieldAsync(
+                new VaultSecretReference(
+                    integrationOptions.Vault.PostgresApiSecretPath,
+                    integrationOptions.Vault.PostgresConnectionStringField),
+                CancellationToken.None)
+            .AsTask()
+            .GetAwaiter()
+            .GetResult();
     }
 
     private static IServiceCollection AddCoreVerticalSlices(this IServiceCollection services)
