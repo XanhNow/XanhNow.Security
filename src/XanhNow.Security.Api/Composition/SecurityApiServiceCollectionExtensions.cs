@@ -16,6 +16,7 @@ using XanhNow.Security.Application.Common.Requests;
 using XanhNow.Security.Application.Core;
 using XanhNow.Security.Application.Abstractions.Context;
 using XanhNow.Security.Infrastructure.Integration;
+using XanhNow.Security.Infrastructure.Integration.Common;
 using XanhNow.Security.Infrastructure.Integration.Options;
 using XanhNow.Security.Infrastructure.Integration.Vault;
 using XanhNow.Security.Infrastructure.Persistence;
@@ -145,14 +146,21 @@ public static class SecurityApiServiceCollectionExtensions
 
     private static string? ResolveSecurityDbConnectionString(IConfiguration configuration)
     {
+        var integrationOptions = new SecurityIntegrationOptions();
+        configuration.GetSection("SecurityIntegration").Bind(integrationOptions);
+
+        var rendered = RenderedSecretFile.ReadTrimmed(integrationOptions.Vault.PostgresConnectionStringFile);
+        if (!string.IsNullOrWhiteSpace(rendered))
+        {
+            return rendered;
+        }
+
         var configured = configuration.GetConnectionString("SecurityDb") ?? configuration["SecurityPersistence:ConnectionString"];
         if (!string.IsNullOrWhiteSpace(configured))
         {
             return configured;
         }
 
-        var integrationOptions = new SecurityIntegrationOptions();
-        configuration.GetSection("SecurityIntegration").Bind(integrationOptions);
         if (string.IsNullOrWhiteSpace(integrationOptions.Vault.Address))
         {
             return null;

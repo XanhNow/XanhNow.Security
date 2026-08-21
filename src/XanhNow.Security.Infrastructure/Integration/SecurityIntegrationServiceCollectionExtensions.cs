@@ -38,6 +38,7 @@ public static class SecurityIntegrationServiceCollectionExtensions
         services.AddSingleton(sp =>
         {
             var options = sp.GetRequiredService<IOptions<SecurityIntegrationOptions>>().Value;
+            ApplyRenderedSecretFiles(options);
             sp.GetRequiredService<SecurityIntegrationOptionsValidator>().ValidateAndThrow(options);
             return options;
         });
@@ -79,9 +80,13 @@ public static class SecurityIntegrationServiceCollectionExtensions
     private static ConfigurationOptions BuildRedisConfiguration(SecurityIntegrationOptions options, IVaultSecretReader secrets)
     {
         var redis = options.Redis;
-        var configuration = !string.IsNullOrWhiteSpace(redis.Configuration)
-            ? ConfigurationOptions.Parse(redis.Configuration)
-            : ConfigurationOptions.Parse(redis.BootstrapEndpoints);
+        var configurationText = RenderedSecretFile.ReadTrimmed(redis.ConfigurationFile)
+            ?? redis.Configuration
+            ?? string.Empty;
+        var endpointText = redis.BootstrapEndpoints ?? string.Empty;
+        var configuration = !string.IsNullOrWhiteSpace(configurationText)
+            ? ConfigurationOptions.Parse(configurationText)
+            : ConfigurationOptions.Parse(endpointText);
 
         configuration.AbortOnConnectFail = redis.AbortOnConnectFail;
         configuration.ConnectTimeout = redis.ConnectTimeoutMs;
@@ -92,7 +97,8 @@ public static class SecurityIntegrationServiceCollectionExtensions
 
         if (string.IsNullOrWhiteSpace(configuration.Password) && !string.IsNullOrWhiteSpace(redis.SecretPath))
         {
-            var password = secrets.ReadFieldAsync(new VaultSecretReference(redis.SecretPath, redis.PasswordField), CancellationToken.None).AsTask().GetAwaiter().GetResult();
+            var password = RenderedSecretFile.ReadTrimmed(redis.PasswordFile)
+                ?? secrets.ReadFieldAsync(new VaultSecretReference(redis.SecretPath, redis.PasswordField), CancellationToken.None).AsTask().GetAwaiter().GetResult();
             if (!string.IsNullOrWhiteSpace(password))
             {
                 configuration.Password = password;
@@ -100,6 +106,13 @@ public static class SecurityIntegrationServiceCollectionExtensions
         }
 
         return configuration;
+    }
+
+    private static void ApplyRenderedSecretFiles(SecurityIntegrationOptions options)
+    {
+        options.Redis.Configuration = RenderedSecretFile.ReadTrimmed(options.Redis.ConfigurationFile) ?? options.Redis.Configuration;
+        options.Redis.KeyPrefix = RenderedSecretFile.ReadTrimmed(options.Redis.KeyPrefixFile) ?? options.Redis.KeyPrefix;
+        options.Kafka.BootstrapServers = RenderedSecretFile.ReadTrimmed(options.Kafka.BootstrapServersFile) ?? options.Kafka.BootstrapServers;
     }
 
     private static HttpClient CreateHttpClient(ChildAppClientOptions options)

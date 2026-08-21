@@ -113,9 +113,9 @@ public sealed class SecurityIntegrationRegistrationTests
         Jwt = new ChildAppClientOptions { Name = "JWT_Refresh_Token_App", BaseAddress = "http://127.0.0.1:5102", Deadline = TimeSpan.FromSeconds(5) },
         Passkey = new ChildAppClientOptions { Name = "Passkey_Provider_App", BaseAddress = "http://127.0.0.1:5101", Deadline = TimeSpan.FromSeconds(5) },
         SmartOtp = new ChildAppClientOptions { Name = "SmartOtp_App", BaseAddress = "http://127.0.0.1:5104", Deadline = TimeSpan.FromSeconds(5), RequiresMtls = false },
-        Redis = new RedisIntegrationOptions { KeyPrefix = "xanhnow:security:test", DefaultCacheTtl = TimeSpan.FromMinutes(5), IdempotencyTtl = TimeSpan.FromMinutes(15), LockTtl = TimeSpan.FromSeconds(30) },
+        Redis = new RedisIntegrationOptions { KeyPrefix = "s101:security:test", DefaultCacheTtl = TimeSpan.FromMinutes(5), IdempotencyTtl = TimeSpan.FromMinutes(15), LockTtl = TimeSpan.FromSeconds(30) },
         Kafka = new KafkaIntegrationOptions { SecurityEventsTopic = "xanhnow.security.events", SecurityAuditTopic = "xanhnow.security.audit" },
-        Vault = new VaultIntegrationOptions { Address = "https://127.0.0.1:8200", RoleIdFile = "/etc/xanhnow/security/vault/role_id", SecretIdFile = "/etc/xanhnow/security/vault/secret_id" }
+        Vault = new VaultIntegrationOptions { Address = "https://127.0.0.1:8200", RoleIdFile = "/etc/xanhnow/s101/security/vault/role_id", SecretIdFile = "/etc/xanhnow/s101/security/vault/secret_id" }
     };
 
     private static void Copy(SecurityIntegrationOptions source, SecurityIntegrationOptions target)

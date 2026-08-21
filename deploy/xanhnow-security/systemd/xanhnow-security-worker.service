@@ -1,7 +1,7 @@
 ﻿[Unit]
 Description=XanhNow Security Worker
-After=network-online.target
-Wants=network-online.target
+After=network-online.target xanhnow-security-vault-agent.service
+Wants=network-online.target xanhnow-security-vault-agent.service
 
 [Service]
 Type=simple

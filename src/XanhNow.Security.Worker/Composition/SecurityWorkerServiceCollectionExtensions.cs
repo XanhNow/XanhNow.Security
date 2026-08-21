@@ -4,6 +4,8 @@ using XanhNow.Security.Application.Background;
 using XanhNow.Security.Application.Background.Commands;
 using XanhNow.Security.Application.Common.Requests;
 using XanhNow.Security.Infrastructure.Integration;
+using XanhNow.Security.Infrastructure.Integration.Common;
+using XanhNow.Security.Infrastructure.Integration.Options;
 using XanhNow.Security.Infrastructure.Persistence;
 using XanhNow.Security.Worker.Jobs;
 using XanhNow.Security.Worker.Options;
@@ -23,7 +25,7 @@ public static class SecurityWorkerServiceCollectionExtensions
 
         services.AddSecurityPersistence(options =>
         {
-            options.ConnectionString = configuration.GetConnectionString("SecurityDb") ?? configuration["SecurityPersistence:ConnectionString"];
+            options.ConnectionString = ResolveSecurityDbConnectionString(configuration);
             options.EnableDetailedErrors = environment.IsDevelopment();
             options.EnableSensitiveDataLogging = false;
         });
@@ -53,6 +55,16 @@ public static class SecurityWorkerServiceCollectionExtensions
         services.AddHostedService<WorkerJobHostedService>();
 
         return services;
+    }
+
+    private static string? ResolveSecurityDbConnectionString(IConfiguration configuration)
+    {
+        var integrationOptions = new SecurityIntegrationOptions();
+        configuration.GetSection("SecurityIntegration").Bind(integrationOptions);
+
+        return RenderedSecretFile.ReadTrimmed(integrationOptions.Vault.PostgresConnectionStringFile)
+            ?? configuration.GetConnectionString("SecurityDb")
+            ?? configuration["SecurityPersistence:ConnectionString"];
     }
 
     private static IWorkerJob CreateJob(IServiceProvider sp, WorkerJobOptions options) =>

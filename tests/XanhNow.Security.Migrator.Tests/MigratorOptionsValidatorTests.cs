@@ -14,8 +14,8 @@ public sealed class MigratorOptionsValidatorTests
         {
             ExpectedSchema = "security",
             ExpectedDatabase = "authtest",
-            ExpectedRole = "xanhnow_security_migrator",
-            LockKey = "xanhnow.security.migrator",
+            ExpectedRole = "s101_xanhnow_auth_security_migrator",
+            LockKey = "s101.xanhnow.auth.security.migrator",
             Credential = new MigratorCredentialOptions { Provider = "Environment", EnvVarName = "SECURITY_MIGRATOR_CONNECTION_STRING" }
         });
 
@@ -29,8 +29,8 @@ public sealed class MigratorOptionsValidatorTests
         {
             ExpectedSchema = "public",
             ExpectedDatabase = "authtest",
-            ExpectedRole = "xanhnow_security_migrator",
-            LockKey = "xanhnow.security.migrator",
+            ExpectedRole = "s101_xanhnow_auth_security_migrator",
+            LockKey = "s101.xanhnow.auth.security.migrator",
             Credential = new MigratorCredentialOptions { Provider = "Environment", EnvVarName = "SECURITY_MIGRATOR_CONNECTION_STRING" }
         });
 

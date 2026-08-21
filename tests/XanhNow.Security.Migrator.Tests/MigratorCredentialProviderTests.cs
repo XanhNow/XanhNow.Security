@@ -13,7 +13,7 @@ public sealed class MigratorCredentialProviderTests
     public async Task LoadConnectionStringAsync_ReadsEnvironmentAndDisablesPooling()
     {
         var variable = $"SECURITY_MIGRATOR_TEST_{Guid.NewGuid():N}";
-        Environment.SetEnvironmentVariable(variable, "Host=localhost;Database=authtest;Username=xanhnow_security_migrator;Password=secret;Pooling=true;Include Error Detail=true");
+        Environment.SetEnvironmentVariable(variable, "Host=localhost;Database=authtest;Username=s101_xanhnow_auth_security_migrator;Password=secret;Pooling=true;Include Error Detail=true");
         try
         {
             var provider = new MigratorCredentialProvider(OptionsFactory.Create(new MigratorOptions

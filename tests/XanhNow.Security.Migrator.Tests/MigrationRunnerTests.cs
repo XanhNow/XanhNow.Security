@@ -75,12 +75,12 @@ public sealed class MigrationRunnerTests
 
     private sealed class FakeCredentialProvider : IMigratorCredentialProvider
     {
-        public Task<string> LoadConnectionStringAsync(CancellationToken cancellationToken) => Task.FromResult("Host=localhost;Database=authtest;Username=xanhnow_security_migrator;Password=secret");
+        public Task<string> LoadConnectionStringAsync(CancellationToken cancellationToken) => Task.FromResult("Host=localhost;Database=authtest;Username=s101_xanhnow_auth_security_migrator;Password=secret");
     }
 
     private sealed class FakePreflight : ITargetPreflightService
     {
-        public Task<TargetPreflightResult> CheckAsync(CancellationToken cancellationToken) => Task.FromResult(new TargetPreflightResult("authtest", "xanhnow_security_migrator", "security", true));
+        public Task<TargetPreflightResult> CheckAsync(CancellationToken cancellationToken) => Task.FromResult(new TargetPreflightResult("authtest", "s101_xanhnow_auth_security_migrator", "security", true));
     }
 
     private sealed class FakePlanner : IMigrationPlanner

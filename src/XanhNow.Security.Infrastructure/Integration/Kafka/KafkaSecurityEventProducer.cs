@@ -1,5 +1,6 @@
 using System.Text;
 using Confluent.Kafka;
+using XanhNow.Security.Infrastructure.Integration.Common;
 using XanhNow.Security.Infrastructure.Integration.Options;
 using XanhNow.Security.Infrastructure.Integration.Vault;
 
@@ -71,10 +72,14 @@ internal sealed class KafkaSecurityEventProducer : IKafkaSecurityEventProducer, 
 
         if (!string.IsNullOrWhiteSpace(_options.Kafka.SecretPath))
         {
-            var username = await ReadOptionalAsync(_options.Kafka.SecretPath, _options.Kafka.UsernameField, cancellationToken);
-            var password = await ReadOptionalAsync(_options.Kafka.SecretPath, _options.Kafka.PasswordField, cancellationToken);
-            var securityProtocol = await ReadOptionalAsync(_options.Kafka.SecretPath, _options.Kafka.SecurityProtocolField, cancellationToken);
-            var saslMechanism = await ReadOptionalAsync(_options.Kafka.SecretPath, _options.Kafka.SaslMechanismField, cancellationToken);
+            var username = ReadOptionalFile(_options.Kafka.UsernameFile)
+                ?? await ReadOptionalAsync(_options.Kafka.SecretPath, _options.Kafka.UsernameField, cancellationToken);
+            var password = ReadOptionalFile(_options.Kafka.PasswordFile)
+                ?? await ReadOptionalAsync(_options.Kafka.SecretPath, _options.Kafka.PasswordField, cancellationToken);
+            var securityProtocol = ReadOptionalFile(_options.Kafka.SecurityProtocolFile)
+                ?? await ReadOptionalAsync(_options.Kafka.SecretPath, _options.Kafka.SecurityProtocolField, cancellationToken);
+            var saslMechanism = ReadOptionalFile(_options.Kafka.SaslMechanismFile)
+                ?? await ReadOptionalAsync(_options.Kafka.SecretPath, _options.Kafka.SaslMechanismField, cancellationToken);
 
             if (!string.IsNullOrWhiteSpace(securityProtocol))
             {
@@ -107,6 +112,14 @@ internal sealed class KafkaSecurityEventProducer : IKafkaSecurityEventProducer, 
     private async ValueTask<string?> ReadOptionalAsync(string path, string field, CancellationToken cancellationToken)
     {
         var value = await _secrets.ReadFieldAsync(new VaultSecretReference(path, field), cancellationToken);
+        return string.IsNullOrWhiteSpace(value) || string.Equals(value, "n/a", StringComparison.OrdinalIgnoreCase)
+            ? null
+            : value;
+    }
+
+    private static string? ReadOptionalFile(string path)
+    {
+        var value = RenderedSecretFile.ReadTrimmed(path);
         return string.IsNullOrWhiteSpace(value) || string.Equals(value, "n/a", StringComparison.OrdinalIgnoreCase)
             ? null
             : value;

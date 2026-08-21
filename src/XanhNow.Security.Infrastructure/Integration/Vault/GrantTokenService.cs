@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using XanhNow.Security.Infrastructure.Integration.Common;
 using XanhNow.Security.Infrastructure.Integration.Options;
 
 namespace XanhNow.Security.Infrastructure.Integration.Vault;
@@ -82,7 +83,8 @@ internal sealed class VaultBackedGrantTokenService : IGrantTokenService
 
     private async ValueTask<string> SignBodyAsync(string body, CancellationToken cancellationToken)
     {
-        var key = await _secrets.ReadFieldAsync(new VaultSecretReference(_options.GrantSigningKeyPath, _options.GrantSigningKeyField), cancellationToken);
+        var key = RenderedSecretFile.ReadTrimmed(_options.GrantSigningKeyFile)
+            ?? await _secrets.ReadFieldAsync(new VaultSecretReference(_options.GrantSigningKeyPath, _options.GrantSigningKeyField), cancellationToken);
         if (string.IsNullOrWhiteSpace(key))
         {
             throw new InvalidOperationException($"Vault grant signing secret '{_options.GrantSigningKeyPath}' is missing field '{_options.GrantSigningKeyField}'.");

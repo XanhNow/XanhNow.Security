@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -201,7 +201,14 @@ namespace XanhNow.Security.Infrastructure.Persistence.Migrations
                 {
                     user_id = table.Column<Guid>(type: "uuid", nullable: false),
                     status = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    registration_status = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
                     risk_level = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    password_registered_at_utc = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    passkey_registered_at_utc = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    registration_completed_at_utc = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    registration_device_id = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: true),
+                    registration_phone_number = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: true),
+                    registration_phone_number_hash = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: true),
                     created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     updated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     last_reason_code = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: true),
@@ -210,6 +217,7 @@ namespace XanhNow.Security.Infrastructure.Persistence.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_security_users", x => x.user_id);
+                    table.CheckConstraint("ck_security_users_registration_status", "registration_status IN ('PendingPasskey', 'Completed')");
                 });
 
             migrationBuilder.CreateIndex(
@@ -337,6 +345,12 @@ namespace XanhNow.Security.Infrastructure.Persistence.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "ix_security_users_registration_status",
+                schema: "security",
+                table: "security_users",
+                column: "registration_status");
+
+            migrationBuilder.CreateIndex(
                 name: "ix_security_users_risk_level",
                 schema: "security",
                 table: "security_users",
@@ -347,6 +361,14 @@ namespace XanhNow.Security.Infrastructure.Persistence.Migrations
                 schema: "security",
                 table: "security_users",
                 column: "status");
+
+            migrationBuilder.CreateIndex(
+                name: "ux_security_users_registration_device_id",
+                schema: "security",
+                table: "security_users",
+                column: "registration_device_id",
+                unique: true,
+                filter: "registration_device_id IS NOT NULL");
         }
 
         /// <inheritdoc />

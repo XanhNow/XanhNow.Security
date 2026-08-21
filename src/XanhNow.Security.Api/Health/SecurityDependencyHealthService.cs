@@ -3,6 +3,7 @@ using Confluent.Kafka;
 using Microsoft.EntityFrameworkCore;
 using XanhNow.Security.Contracts.Common.Enums;
 using XanhNow.Security.Contracts.V1.Health;
+using XanhNow.Security.Infrastructure.Integration.Common;
 using XanhNow.Security.Infrastructure.Integration.Options;
 using XanhNow.Security.Infrastructure.Integration.Redis;
 using XanhNow.Security.Infrastructure.Integration.Vault;
@@ -62,6 +63,12 @@ public sealed class SecurityDependencyHealthService
             if (string.IsNullOrWhiteSpace(_options.Vault.Address))
             {
                 return Unhealthy("vault", "not_configured");
+            }
+
+            var rendered = RenderedSecretFile.ReadTrimmed(_options.Vault.GrantSigningKeyFile);
+            if (!string.IsNullOrWhiteSpace(rendered))
+            {
+                return Healthy("vault", "grant_key_file_readable");
             }
 
             var vault = _services.GetRequiredService<IVaultSecretReader>();

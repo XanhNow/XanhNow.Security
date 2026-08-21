@@ -12,7 +12,7 @@ using XanhNow.Security.Infrastructure.Persistence;
 namespace XanhNow.Security.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(SecurityDbContext))]
-    [Migration("20260720142230_InitialSecuritySchema")]
+    [Migration("20260821172555_InitialSecuritySchema")]
     partial class InitialSecuritySchema
     {
         /// <inheritdoc />
@@ -490,6 +490,39 @@ namespace XanhNow.Security.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(128)")
                         .HasColumnName("last_reason_code");
 
+                    b.Property<DateTimeOffset?>("PasskeyRegisteredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("passkey_registered_at_utc");
+
+                    b.Property<DateTimeOffset?>("PasswordRegisteredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("password_registered_at_utc");
+
+                    b.Property<DateTimeOffset?>("RegistrationCompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("registration_completed_at_utc");
+
+                    b.Property<string>("RegistrationDeviceId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("registration_device_id");
+
+                    b.Property<string>("RegistrationPhoneNumber")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("registration_phone_number");
+
+                    b.Property<string>("RegistrationPhoneNumberHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("registration_phone_number_hash");
+
+                    b.Property<string>("RegistrationStatus")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("registration_status");
+
                     b.Property<string>("RiskLevel")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -515,13 +548,24 @@ namespace XanhNow.Security.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("RegistrationDeviceId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_security_users_registration_device_id")
+                        .HasFilter("registration_device_id IS NOT NULL");
+
+                    b.HasIndex("RegistrationStatus")
+                        .HasDatabaseName("ix_security_users_registration_status");
+
                     b.HasIndex("RiskLevel")
                         .HasDatabaseName("ix_security_users_risk_level");
 
                     b.HasIndex("Status")
                         .HasDatabaseName("ix_security_users_status");
 
-                    b.ToTable("security_users", "security");
+                    b.ToTable("security_users", "security", t =>
+                        {
+                            t.HasCheckConstraint("ck_security_users_registration_status", "registration_status IN ('PendingPasskey', 'Completed')");
+                        });
                 });
 
             modelBuilder.Entity("XanhNow.Security.Infrastructure.Persistence.Models.SecurityOutboxMessageRow", b =>

@@ -545,13 +545,13 @@ namespace XanhNow.Security.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("RegistrationStatus")
-                        .HasDatabaseName("ix_security_users_registration_status");
-
                     b.HasIndex("RegistrationDeviceId")
                         .IsUnique()
                         .HasDatabaseName("ux_security_users_registration_device_id")
                         .HasFilter("registration_device_id IS NOT NULL");
+
+                    b.HasIndex("RegistrationStatus")
+                        .HasDatabaseName("ix_security_users_registration_status");
 
                     b.HasIndex("RiskLevel")
                         .HasDatabaseName("ix_security_users_risk_level");

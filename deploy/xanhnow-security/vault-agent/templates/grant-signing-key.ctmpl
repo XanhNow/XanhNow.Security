@@ -1,0 +1,1 @@
+{{ with secret "kv/data/xanhnow/s101/security/grants/signing" }}{{ .Data.data.signing_key }}{{ end }}
