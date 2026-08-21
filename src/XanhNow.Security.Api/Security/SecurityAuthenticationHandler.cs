@@ -73,12 +73,38 @@ public sealed class SecurityAuthenticationHandler : AuthenticationHandler<Authen
 
         if (!_apiOptions.InternalServiceApiKeys.TryGetValue(serviceName, out var expectedKey) || string.IsNullOrWhiteSpace(expectedKey))
         {
+            expectedKey = ReadServiceApiKeyFromFile(serviceName);
+        }
+
+        if (string.IsNullOrWhiteSpace(expectedKey))
+        {
             return false;
         }
 
         var supplied = Encoding.UTF8.GetBytes(suppliedKey);
         var expected = Encoding.UTF8.GetBytes(expectedKey);
         return supplied.Length == expected.Length && CryptographicOperations.FixedTimeEquals(supplied, expected);
+    }
+
+    private string? ReadServiceApiKeyFromFile(string serviceName)
+    {
+        if (!_apiOptions.InternalServiceApiKeyFiles.TryGetValue(serviceName, out var path) || string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            return File.Exists(path) ? File.ReadAllText(path).Trim() : null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     private static AuthenticationTicket CreateTicket(string callerType, string name, string role, string? sessionId)

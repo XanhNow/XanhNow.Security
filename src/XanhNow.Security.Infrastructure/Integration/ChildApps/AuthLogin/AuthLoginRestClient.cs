@@ -42,6 +42,9 @@ internal sealed class AuthLoginRestClient : ChildAppJsonClient, IAuthLoginClient
     public ValueTask<ChildCallResult<AuthLoginAccountStatusResult>> GetAccountStatusAsync(Guid userId, CancellationToken cancellationToken)
         => GetAsync<AuthLoginAccountStatusResult>($"/internal/v1/accounts/{userId}/status", cancellationToken);
 
+    public ValueTask<ChildCallResult<AuthLoginAccountStatusResult>> GetAccountByPhoneAsync(AuthLoginAccountLookupRequest request, CancellationToken cancellationToken)
+        => GetAsync<AuthLoginAccountStatusResult>($"/internal/v1/accounts/by-phone/status?phoneNumber={Uri.EscapeDataString(request.PhoneNumber)}", cancellationToken);
+
     public ValueTask<ChildCallResult<AuthLoginAccountStateChangeResult>> ChangeAccountStateAsync(AuthLoginAccountStateChangeRequest request, CancellationToken cancellationToken)
         => PostAsync<AuthLoginAccountStateChangeRequest, AuthLoginAccountStateChangeResult>($"/internal/v1/accounts/{request.UserId}/state", request, cancellationToken);
 }

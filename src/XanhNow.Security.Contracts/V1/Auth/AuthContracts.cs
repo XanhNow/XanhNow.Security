@@ -37,6 +37,26 @@ public sealed record CompleteSmartOtpLoginRequest(
     DeviceContextRequest? DeviceContext);
 public sealed record CompleteMfaLoginRequest(Guid UserId, string ChallengeId, [property: SensitiveData("otp")] string Otp, string Audience, DeviceContextRequest? DeviceContext);
 public sealed record ProtectedGrantResponse(Guid GrantId, [property: SensitiveData("protected-grant")] string Grant, string GrantType, string Audience, string Purpose, DateTimeOffset ExpiresAtUtc);
+public sealed record RecoverSmartOtpRequest(
+    Guid UserId,
+    string PhoneNumber,
+    [property: SensitiveData("password")] string Password,
+    [property: SensitiveData("passkey-grant")] string PasskeyGrant);
+public sealed record BeginSmartOtpRecoveryEnrollmentRequest(
+    Guid UserId,
+    [property: SensitiveData("smart-otp-recovery-grant")] string RecoveryGrant,
+    string DeviceName,
+    string Platform,
+    string AppInstanceIdHash,
+    string KeyAlgorithm,
+    string CandidatePublicKeySpki,
+    string CandidatePublicKeyThumbprint);
+public sealed record ConfirmSmartOtpRecoveryEnrollmentRequest(
+    Guid UserId,
+    [property: SensitiveData("smart-otp-recovery-grant")] string RecoveryGrant,
+    string EnrollmentId,
+    string ClientNonce,
+    [property: SensitiveData("smart-otp-device-signature")] string DeviceSignature);
 public sealed record PasskeyLoginBeginRequest(string? LoginIdentifier, DeviceContextRequest? DeviceContext);
 public sealed record PasskeyLoginBeginResponse(string CeremonyId, [property: SensitiveData("webauthn-public-key-options")] JsonElement PublicKeyOptions, DateTimeOffset ExpiresAtUtc);
 public sealed record PasskeyLoginFinishRequest(string CeremonyId, [property: SensitiveData("webauthn-credential")] JsonElement Credential, DeviceContextRequest? DeviceContext);

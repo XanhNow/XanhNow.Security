@@ -14,6 +14,7 @@ using XanhNow.Security.Application.Common.Requests;
 using XanhNow.Security.Application.Common.Results;
 using XanhNow.Security.Domain.Grants;
 using XanhNow.Security.Domain.Policies;
+using XanhNow.Security.Domain.Profiles;
 using XanhNow.Security.Domain.Recovery;
 using XanhNow.Security.Domain.ValueObjects;
 
@@ -201,6 +202,225 @@ public sealed class CompletePasskeyLoginWithGrantCommandHandler : IRequestHandle
     }
 }
 
+internal static class SmartOtpRecoveryGrantPolicy
+{
+    public const string PasskeyLoginPurpose = "passkey_login";
+    public const string RecoveryPurpose = "smart_otp_recovery";
+    public const string Audience = CoreSliceDefaults.DefaultAudience;
+    public const string ReasonCode = "smart_otp_device_lost_recovery";
+
+    public static async ValueTask<Result<SecurityGrant>> VerifyActiveGrantAsync(
+        string? protectedGrant,
+        string expectedPurpose,
+        Guid expectedUserId,
+        SecurityGrantType expectedType,
+        IGrantProtector protector,
+        ISecurityGrantRepository grants,
+        IClock clock,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(protectedGrant))
+        {
+            return Result<SecurityGrant>.Failure(Error.Authentication(SecurityErrorCodes.CallerRequired, "A valid recovery grant is required."));
+        }
+
+        var verified = await protector.VerifyAsync(protectedGrant, expectedPurpose, cancellationToken);
+        if (!verified.IsValid || verified.UserId != expectedUserId || verified.GrantId is null)
+        {
+            return Result<SecurityGrant>.Failure(Error.Authentication(SecurityErrorCodes.CallerRequired, "Recovery grant is invalid."));
+        }
+
+        var grant = await grants.FindByIdAsync(verified.GrantId.Value, cancellationToken);
+        if (grant is null || grant.UserId != expectedUserId || grant.Type != expectedType || grant.Status != SecurityGrantStatus.Active)
+        {
+            return Result<SecurityGrant>.Failure(Error.Authentication(SecurityErrorCodes.CallerRequired, "Recovery grant is not active."));
+        }
+
+        if (!string.Equals(grant.Purpose.Value, expectedPurpose, StringComparison.Ordinal) || grant.ExpiresAt <= clock.UtcNow)
+        {
+            return Result<SecurityGrant>.Failure(Error.Authentication(SecurityErrorCodes.CallerRequired, "Recovery grant is expired or has the wrong purpose."));
+        }
+
+        return Result<SecurityGrant>.Success(grant);
+    }
+}
+
+public sealed class RecoverSmartOtpWithPasswordPasskeyCommandHandler : CoreSliceHandler, IRequestHandler<RecoverSmartOtpWithPasswordPasskeyCommand, ProtectedGrantResult>
+{
+    private readonly IAuthLoginClient _authLogin;
+    private readonly ISmartOtpClient _smartOtp;
+    private readonly ISecurityProfileWriter _profiles;
+    private readonly ISecurityGrantRepository _grants;
+    private readonly IGrantProtector _protector;
+    private readonly IIdGenerator _ids;
+    private readonly ILocalUnitOfWork _unitOfWork;
+    private readonly IClock _clock;
+
+    public RecoverSmartOtpWithPasswordPasskeyCommandHandler(
+        IAuthLoginClient authLogin,
+        ISmartOtpClient smartOtp,
+        ISecurityProfileWriter profiles,
+        ISecurityGrantRepository grants,
+        IGrantProtector protector,
+        IIdGenerator ids,
+        ILocalUnitOfWork unitOfWork,
+        IAuditIntentWriter audit,
+        IClock clock)
+        : base(audit, clock)
+    {
+        _authLogin = authLogin;
+        _smartOtp = smartOtp;
+        _profiles = profiles;
+        _grants = grants;
+        _protector = protector;
+        _ids = ids;
+        _unitOfWork = unitOfWork;
+        _clock = clock;
+    }
+
+    public async Task<Result<ProtectedGrantResult>> HandleAsync(RecoverSmartOtpWithPasswordPasskeyCommand request, CancellationToken cancellationToken)
+    {
+        var passkeyGrant = await SmartOtpRecoveryGrantPolicy.VerifyActiveGrantAsync(
+            request.PasskeyGrant,
+            SmartOtpRecoveryGrantPolicy.PasskeyLoginPurpose,
+            request.UserId,
+            SecurityGrantType.AuthGrant,
+            _protector,
+            _grants,
+            _clock,
+            cancellationToken);
+        if (passkeyGrant.IsFailure)
+        {
+            await AuditAsync(request.UserId, "auth.smart_otp_recovery", "blocked", "passkey_grant_invalid", cancellationToken);
+            return Result<ProtectedGrantResult>.Failure(passkeyGrant.Error!);
+        }
+
+        var password = await _authLogin.LoginWithPasswordAsync(new AuthLoginPasswordRequest(request.PhoneNumber, new SensitiveString(request.Password)), cancellationToken);
+        if (password.IsFailure || password.Value is null || password.Value.UserId != request.UserId)
+        {
+            await AuditAsync(request.UserId, "auth.smart_otp_recovery", "blocked", password.Error?.Code ?? "password_proof_invalid", cancellationToken);
+            return Result<ProtectedGrantResult>.Failure(Error.Authentication(SecurityErrorCodes.CallerRequired, "Password proof failed."));
+        }
+
+        var revoked = await _smartOtp.RevokeAllDevicesAsync(new SmartOtpRevokeAllDevicesRequest(request.UserId, SmartOtpRecoveryGrantPolicy.ReasonCode), cancellationToken);
+        if (revoked.IsFailure || revoked.Value is null)
+        {
+            await AuditAsync(request.UserId, "auth.smart_otp_recovery", "failed", revoked.Error?.Code ?? "smart_otp_revoke_failed", cancellationToken);
+            return ChildFailure<ProtectedGrantResult>(revoked.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Smart OTP revoke-all failed.", true));
+        }
+
+        var now = Now;
+        var profile = await _profiles.FindByUserIdAsync(request.UserId, cancellationToken);
+        if (profile is not null)
+        {
+            profile.ApplySnapshot(profile.PasskeyCount, 0, profile.PasswordLoginEnabled, now);
+        }
+
+        passkeyGrant.Value!.Consume(now);
+        await AuditAsync(request.UserId, "auth.smart_otp_recovery", "accepted", SmartOtpRecoveryGrantPolicy.ReasonCode, cancellationToken);
+        var recoveryGrant = await IssueAuthGrantCommandHandler.IssueGrantAsync(
+            _grants,
+            _protector,
+            _ids,
+            _unitOfWork,
+            _clock,
+            request.UserId,
+            SecurityGrantType.StepUpGrant,
+            SmartOtpRecoveryGrantPolicy.Audience,
+            SmartOtpRecoveryGrantPolicy.RecoveryPurpose,
+            TimeSpan.FromMinutes(10),
+            cancellationToken);
+
+        return Result<ProtectedGrantResult>.Success(recoveryGrant);
+    }
+}
+
+public sealed class BeginSmartOtpRecoveryEnrollmentCommandHandler : IRequestHandler<BeginSmartOtpRecoveryEnrollmentCommand, BeginSmartOtpEnrollmentResult>
+{
+    private readonly ISmartOtpClient _smartOtp;
+    private readonly ISecurityGrantRepository _grants;
+    private readonly IGrantProtector _protector;
+    private readonly IClock _clock;
+
+    public BeginSmartOtpRecoveryEnrollmentCommandHandler(ISmartOtpClient smartOtp, ISecurityGrantRepository grants, IGrantProtector protector, IClock clock)
+    {
+        _smartOtp = smartOtp;
+        _grants = grants;
+        _protector = protector;
+        _clock = clock;
+    }
+
+    public async Task<Result<BeginSmartOtpEnrollmentResult>> HandleAsync(BeginSmartOtpRecoveryEnrollmentCommand request, CancellationToken cancellationToken)
+    {
+        var grant = await SmartOtpRecoveryGrantPolicy.VerifyActiveGrantAsync(request.RecoveryGrant, SmartOtpRecoveryGrantPolicy.RecoveryPurpose, request.UserId, SecurityGrantType.StepUpGrant, _protector, _grants, _clock, cancellationToken);
+        if (grant.IsFailure)
+        {
+            return Result<BeginSmartOtpEnrollmentResult>.Failure(grant.Error!);
+        }
+
+        var child = await _smartOtp.BeginBindAsync(new SmartOtpBindBeginRequest(request.UserId, request.DeviceName, request.Platform, request.AppInstanceIdHash, request.KeyAlgorithm, request.CandidatePublicKeySpki, request.CandidatePublicKeyThumbprint), cancellationToken);
+        return child.IsSuccess && child.Value is not null
+            ? Result<BeginSmartOtpEnrollmentResult>.Success(new BeginSmartOtpEnrollmentResult(child.Value.BindingId, child.Value.ServerChallengeBase64, child.Value.ChallengeFormatVersion, child.Value.CreatedAtUtc, child.Value.ExpiresAtUtc, child.Value.Status))
+            : CoreSliceHandler.ChildFailure<BeginSmartOtpEnrollmentResult>(child.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Smart OTP recovery begin bind failed.", true));
+    }
+}
+
+public sealed class ConfirmSmartOtpRecoveryEnrollmentCommandHandler : IRequestHandler<ConfirmSmartOtpRecoveryEnrollmentCommand, SmartOtpDeviceStateResult>
+{
+    private readonly ISmartOtpClient _smartOtp;
+    private readonly ISecurityProfileWriter _profiles;
+    private readonly ISecurityGrantRepository _grants;
+    private readonly IGrantProtector _protector;
+    private readonly ILocalUnitOfWork _unitOfWork;
+    private readonly IClock _clock;
+
+    public ConfirmSmartOtpRecoveryEnrollmentCommandHandler(ISmartOtpClient smartOtp, ISecurityProfileWriter profiles, ISecurityGrantRepository grants, IGrantProtector protector, ILocalUnitOfWork unitOfWork, IClock clock)
+    {
+        _smartOtp = smartOtp;
+        _profiles = profiles;
+        _grants = grants;
+        _protector = protector;
+        _unitOfWork = unitOfWork;
+        _clock = clock;
+    }
+
+    public async Task<Result<SmartOtpDeviceStateResult>> HandleAsync(ConfirmSmartOtpRecoveryEnrollmentCommand request, CancellationToken cancellationToken)
+    {
+        var grant = await SmartOtpRecoveryGrantPolicy.VerifyActiveGrantAsync(request.RecoveryGrant, SmartOtpRecoveryGrantPolicy.RecoveryPurpose, request.UserId, SecurityGrantType.StepUpGrant, _protector, _grants, _clock, cancellationToken);
+        if (grant.IsFailure)
+        {
+            return Result<SmartOtpDeviceStateResult>.Failure(grant.Error!);
+        }
+
+        var child = await _smartOtp.FinishBindAsync(new SmartOtpBindFinishRequest(request.UserId, request.EnrollmentId, request.ClientNonce, request.DeviceSignature), cancellationToken);
+        if (child.IsFailure || child.Value is null)
+        {
+            return CoreSliceHandler.ChildFailure<SmartOtpDeviceStateResult>(child.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Smart OTP recovery confirm bind failed.", true));
+        }
+
+        var now = _clock.UtcNow;
+        var isActive = string.Equals(child.Value.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase);
+        if (isActive)
+        {
+            var profile = await _profiles.FindByUserIdAsync(request.UserId, cancellationToken);
+            if (profile is null)
+            {
+                profile = SecurityProfile.Create(request.UserId, 0, 1, true, now);
+                await _profiles.AddAsync(profile, cancellationToken);
+            }
+            else
+            {
+                profile.ApplySnapshot(profile.PasskeyCount, 1, profile.PasswordLoginEnabled, now);
+            }
+
+            grant.Value!.Consume(now);
+            await _unitOfWork.CommitAsync(cancellationToken);
+        }
+
+        return Result<SmartOtpDeviceStateResult>.Success(new SmartOtpDeviceStateResult(child.Value.DeviceId, child.Value.DeviceKeyId, child.Value.Status, isActive, child.Value.BoundAtUtc));
+    }
+}
+
 public sealed class IssueTransactionStepUpGrantCommandHandler : IRequestHandler<IssueTransactionStepUpGrantCommand, ProtectedGrantResult>
 {
     private readonly ISmartOtpClient _smartOtp;
@@ -352,6 +572,163 @@ public sealed class CompleteAccountRecoveryCommandHandler : CoreSliceHandler, IR
         await AuditAsync(request.UserId, "recovery.complete", "succeeded", request.ReasonCode, cancellationToken);
         await _unitOfWork.CommitAsync(cancellationToken);
         return Result<RecoveryWorkflowResult>.Success(RecoveryPolicyStepUpMapper.ToRecovery(recovery, "completed", Now));
+    }
+}
+
+public sealed class GetAdminRecoveryUserByPhoneQueryHandler : IRequestHandler<GetAdminRecoveryUserByPhoneQuery, AdminRecoveryUserStatusResult>
+{
+    private readonly IAuthLoginClient _authLogin;
+    private readonly IPasskeyClient _passkey;
+    private readonly ISecurityProfileReader _profiles;
+
+    public GetAdminRecoveryUserByPhoneQueryHandler(IAuthLoginClient authLogin, IPasskeyClient passkey, ISecurityProfileReader profiles)
+    {
+        _authLogin = authLogin;
+        _passkey = passkey;
+        _profiles = profiles;
+    }
+
+    public async Task<Result<AdminRecoveryUserStatusResult>> HandleAsync(GetAdminRecoveryUserByPhoneQuery request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.PhoneNumber))
+        {
+            return Result<AdminRecoveryUserStatusResult>.Failure(Error.Validation(SecurityErrorCodes.ValidationFailed, "Phone number is required."));
+        }
+
+        var account = await _authLogin.GetAccountByPhoneAsync(new AuthLoginAccountLookupRequest(request.PhoneNumber), cancellationToken);
+        if (account.IsFailure || account.Value is null)
+        {
+            return CoreSliceHandler.ChildFailure<AdminRecoveryUserStatusResult>(account.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Auth Login account lookup failed.", true));
+        }
+
+        var passkeys = await _passkey.ListAsync(account.Value.UserId, cancellationToken);
+        if (passkeys.IsFailure)
+        {
+            return CoreSliceHandler.ChildFailure<AdminRecoveryUserStatusResult>(passkeys.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Passkey credential list failed.", true));
+        }
+
+        var profile = await _profiles.FindByUserIdAsync(account.Value.UserId, cancellationToken);
+        var activePasskeyCount = passkeys.Value?.Count(x => !x.Revoked) ?? 0;
+        var smartOtpDeviceCount = Math.Max(0, profile?.SmartOtpDeviceCount ?? 0);
+
+        return Result<AdminRecoveryUserStatusResult>.Success(new AdminRecoveryUserStatusResult(
+            account.Value.UserId,
+            request.PhoneNumber,
+            account.Value.MaskedPhoneNumber,
+            account.Value.Status,
+            activePasskeyCount,
+            smartOtpDeviceCount,
+            account.Value.UpdatedAtUtc));
+    }
+}
+
+public sealed class ApproveAdminAccountRecoveryCommandHandler : CoreSliceHandler, IRequestHandler<ApproveAdminAccountRecoveryCommand, AdminAccountRecoveryApprovalResult>
+{
+    private const string ReasonCodeValue = "admin_account_recovery_approved";
+    private const string RecoveryGrantPurpose = "account_recovery";
+    private readonly IAuthLoginClient _authLogin;
+    private readonly IPasskeyClient _passkey;
+    private readonly ISmartOtpClient _smartOtp;
+    private readonly ISecurityProfileWriter _profiles;
+    private readonly ISecurityGrantRepository _grants;
+    private readonly IGrantProtector _protector;
+    private readonly IIdGenerator _ids;
+    private readonly ILocalUnitOfWork _unitOfWork;
+    private readonly IClock _clock;
+
+    public ApproveAdminAccountRecoveryCommandHandler(
+        IAuthLoginClient authLogin,
+        IPasskeyClient passkey,
+        ISmartOtpClient smartOtp,
+        ISecurityProfileWriter profiles,
+        ISecurityGrantRepository grants,
+        IGrantProtector protector,
+        IIdGenerator ids,
+        ILocalUnitOfWork unitOfWork,
+        IAuditIntentWriter audit,
+        IClock clock)
+        : base(audit, clock)
+    {
+        _authLogin = authLogin;
+        _passkey = passkey;
+        _smartOtp = smartOtp;
+        _profiles = profiles;
+        _grants = grants;
+        _protector = protector;
+        _ids = ids;
+        _unitOfWork = unitOfWork;
+        _clock = clock;
+    }
+
+    public async Task<Result<AdminAccountRecoveryApprovalResult>> HandleAsync(ApproveAdminAccountRecoveryCommand request, CancellationToken cancellationToken)
+    {
+        if (request.RequestId == Guid.Empty)
+        {
+            return Result<AdminAccountRecoveryApprovalResult>.Failure(Error.Validation(SecurityErrorCodes.ValidationFailed, "Recovery request id is required."));
+        }
+
+        if (request.UserId == Guid.Empty)
+        {
+            return Result<AdminAccountRecoveryApprovalResult>.Failure(Error.Validation(SecurityErrorCodes.ValidationFailed, "User id is required."));
+        }
+
+        if (string.IsNullOrWhiteSpace(request.PhoneNumber) || string.IsNullOrWhiteSpace(request.AdminId) || string.IsNullOrWhiteSpace(request.Reason))
+        {
+            return Result<AdminAccountRecoveryApprovalResult>.Failure(Error.Validation(SecurityErrorCodes.ValidationFailed, "Phone number, admin id and reason are required."));
+        }
+
+        var account = await _authLogin.GetAccountStatusAsync(request.UserId, cancellationToken);
+        if (account.IsFailure || account.Value is null)
+        {
+            await AuditAsync(request.UserId, "admin.account_recovery.approve", "failed", account.Error?.Code ?? "auth_login_lookup_failed", cancellationToken);
+            return CoreSliceHandler.ChildFailure<AdminAccountRecoveryApprovalResult>(account.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Auth Login account status failed.", true));
+        }
+
+        var passkey = await _passkey.RevokeAllAsync(new PasskeyRevokeAllRequest(request.UserId, ReasonCodeValue), cancellationToken);
+        if (passkey.IsFailure || passkey.Value is null)
+        {
+            await AuditAsync(request.UserId, "admin.account_recovery.approve", "partial", passkey.Error?.Code ?? "passkey_revoke_all_failed", cancellationToken);
+            return CoreSliceHandler.ChildFailure<AdminAccountRecoveryApprovalResult>(passkey.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Passkey revoke-all failed.", true));
+        }
+
+        var smartOtp = await _smartOtp.RevokeAllDevicesAsync(new SmartOtpRevokeAllDevicesRequest(request.UserId, ReasonCodeValue), cancellationToken);
+        if (smartOtp.IsFailure || smartOtp.Value is null)
+        {
+            await AuditAsync(request.UserId, "admin.account_recovery.approve", "partial", smartOtp.Error?.Code ?? "smart_otp_revoke_all_failed", cancellationToken);
+            return CoreSliceHandler.ChildFailure<AdminAccountRecoveryApprovalResult>(smartOtp.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Smart OTP revoke-all failed.", true));
+        }
+
+        var now = Now;
+        var profile = await _profiles.FindByUserIdAsync(request.UserId, cancellationToken);
+        if (profile is null)
+        {
+            profile = SecurityProfile.Create(request.UserId, 0, 0, true, now);
+            await _profiles.AddAsync(profile, cancellationToken);
+        }
+        else
+        {
+            profile.ApplySnapshot(0, 0, profile.PasswordLoginEnabled, now);
+        }
+
+        await AuditAsync(request.UserId, "admin.account_recovery.approve", "succeeded", ReasonCodeValue, cancellationToken);
+        var grant = await IssueAuthGrantCommandHandler.IssueGrantAsync(
+            _grants,
+            _protector,
+            _ids,
+            _unitOfWork,
+            _clock,
+            request.UserId,
+            SecurityGrantType.RecoveryGrant,
+            CoreSliceDefaults.DefaultAudience,
+            RecoveryGrantPurpose,
+            TimeSpan.FromMinutes(15),
+            cancellationToken);
+
+        return Result<AdminAccountRecoveryApprovalResult>.Success(new AdminAccountRecoveryApprovalResult(
+            grant.GrantId,
+            grant.Grant,
+            grant.ExpiresAtUtc,
+            request.RequestId.ToString("N")));
     }
 }
 

@@ -11,6 +11,7 @@ service SmartOtpProvider {
   rpc LockOtpDevice (ChangeOtpDeviceStateRequest) returns (OtpDeviceStatusResponse);
   rpc DisableOtpDevice (ChangeOtpDeviceStateRequest) returns (OtpDeviceStatusResponse);
   rpc RevokeOtpDevice (ChangeOtpDeviceStateRequest) returns (OtpDeviceStatusResponse);
+  rpc RevokeAllOtpDevices (RevokeAllOtpDevicesRequest) returns (RevokeAllOtpDevicesResponse);
   rpc CreateOtpChallenge (CreateOtpChallengeRequest) returns (CreateOtpChallengeResponse);
   rpc RevealOtpChallenge (RevealOtpChallengeRequest) returns (RevealOtpChallengeResponse);
   rpc VerifyOtpChallenge (VerifyOtpChallengeRequest) returns (VerifyOtpChallengeResponse);
@@ -59,6 +60,8 @@ message CompleteBindOtpDeviceResponse {
 message GetOtpDeviceStatusRequest { string device_id = 1; string external_user_id = 2; RequestMetadata metadata = 3; }
 message ChangeOtpDeviceStateRequest { string device_id = 1; string external_user_id = 2; string reason_code = 3; int32 lock_seconds = 4; RequestMetadata metadata = 5; }
 message OtpDeviceStatusResponse { string device_id = 1; string external_user_id = 2; string status = 3; int64 locked_until_unix_ms = 4; int64 bound_at_unix_ms = 5; int64 last_seen_at_unix_ms = 6; }
+message RevokeAllOtpDevicesRequest { string external_user_id = 1; string reason_code = 2; RequestMetadata metadata = 3; }
+message RevokeAllOtpDevicesResponse { int32 revoked_count = 1; int64 revoked_at_unix_ms = 2; }
 
 message CreateOtpChallengeRequest {
   string external_user_id = 1;

@@ -8,6 +8,7 @@ public sealed record AuthLoginPasswordRequest(string PhoneNumber, SensitiveStrin
 public sealed record AuthLoginPasswordResult(Guid UserId, string AssuranceLevel);
 public sealed record AuthLoginOperationResult(Guid OperationId, string OperationType, string Status, string CurrentStep);
 public sealed record AuthLoginAccountStatusResult(Guid UserId, string MaskedPhoneNumber, string Status, DateTimeOffset UpdatedAtUtc);
+public sealed record AuthLoginAccountLookupRequest(string PhoneNumber);
 public sealed record AuthLoginAccountStateChangeResult(Guid UserId, string Status, DateTimeOffset ChangedAtUtc);
 public sealed record AuthLoginChangePasswordRequest(Guid UserId, SensitiveString CurrentPassword, SensitiveString NewPassword, string ReasonCode);
 public sealed record AuthLoginPasswordResetStartRequest(string PhoneNumber);
@@ -30,5 +31,6 @@ public interface IAuthLoginClient
     ValueTask<ChildCallResult<AuthLoginOperationResult>> ConfirmPhoneChangeAsync(AuthLoginPhoneChangeConfirmRequest request, CancellationToken cancellationToken);
     ValueTask<ChildCallResult<AuthLoginOperationResult>> CancelPhoneChangeAsync(AuthLoginPhoneChangeCancelRequest request, CancellationToken cancellationToken);
     ValueTask<ChildCallResult<AuthLoginAccountStatusResult>> GetAccountStatusAsync(Guid userId, CancellationToken cancellationToken);
+    ValueTask<ChildCallResult<AuthLoginAccountStatusResult>> GetAccountByPhoneAsync(AuthLoginAccountLookupRequest request, CancellationToken cancellationToken);
     ValueTask<ChildCallResult<AuthLoginAccountStateChangeResult>> ChangeAccountStateAsync(AuthLoginAccountStateChangeRequest request, CancellationToken cancellationToken);
 }

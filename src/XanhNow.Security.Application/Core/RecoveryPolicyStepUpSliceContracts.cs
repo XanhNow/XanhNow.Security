@@ -6,16 +6,23 @@ public sealed record PolicyDecisionResultDto(Guid DecisionId, string PolicyCode,
 public sealed record ProtectedGrantResult(Guid GrantId, string Grant, string GrantType, string Audience, string Purpose, DateTimeOffset ExpiresAtUtc);
 public sealed record RecoveryWorkflowResult(Guid RecoveryCaseId, Guid UserId, string Status, string CurrentStep, DateTimeOffset UpdatedAtUtc);
 public sealed record LoginMfaChallengeResult(Guid UserId, string ChallengeId, string Method, string Purpose, DateTimeOffset ExpiresAtUtc);
+public sealed record AdminRecoveryUserStatusResult(Guid UserId, string PhoneNumber, string MaskedPhoneNumber, string Status, int PasskeyCredentialCount, int SmartOtpDeviceCount, DateTimeOffset UpdatedAtUtc);
+public sealed record AdminAccountRecoveryApprovalResult(Guid RecoveryGrantId, string RecoveryGrant, DateTimeOffset ExpiresAtUtc, string CorrelationId);
 
 public sealed record EvaluateSecurityPolicyCommand(Guid? UserId, string PolicyCode, string Purpose, string AssuranceLevel, IReadOnlyDictionary<string, string> Context) : ICommand<PolicyDecisionResultDto>;
 public sealed record IssueAuthGrantCommand(Guid UserId, string Audience, string Purpose, string AssuranceLevel, TimeSpan Lifetime) : ICommand<ProtectedGrantResult>;
 public sealed record BeginLoginMfaCommand(Guid UserId, string LoginOperationId, string TransactionDigest) : ICommand<LoginMfaChallengeResult>;
 public sealed record CompleteLoginMfaCommand(Guid UserId, string ChallengeId, string TotpCode, string Audience) : ICommand<ProtectedGrantResult>;
 public sealed record CompletePasskeyLoginWithGrantCommand(string CeremonyId, string CredentialJson, string Audience) : ICommand<ProtectedGrantResult>;
+public sealed record RecoverSmartOtpWithPasswordPasskeyCommand(Guid UserId, string PhoneNumber, string Password, string PasskeyGrant) : ICommand<ProtectedGrantResult>;
+public sealed record BeginSmartOtpRecoveryEnrollmentCommand(Guid UserId, string RecoveryGrant, string DeviceName, string Platform, string AppInstanceIdHash, string KeyAlgorithm, string CandidatePublicKeySpki, string CandidatePublicKeyThumbprint) : ICommand<BeginSmartOtpEnrollmentResult>;
+public sealed record ConfirmSmartOtpRecoveryEnrollmentCommand(Guid UserId, string RecoveryGrant, string EnrollmentId, string ClientNonce, string DeviceSignature) : ICommand<SmartOtpDeviceStateResult>;
 public sealed record IssueTransactionStepUpGrantCommand(Guid UserId, string Audience, string Purpose, string TransactionId, string TransactionDigest, string CanonicalizationVersion, string ChallengeId, string TotpCode) : ICommand<ProtectedGrantResult>;
 public sealed record ReportLostPhoneCommand(Guid UserId, string DeviceReference, string ReasonCode) : ICommand<RecoveryWorkflowResult>;
 public sealed record StartAccountRecoveryCommand(Guid UserId, string ReasonCode) : ICommand<RecoveryWorkflowResult>;
 public sealed record CompleteAccountRecoveryCommand(Guid UserId, Guid RecoveryCaseId, string ReasonCode) : ICommand<RecoveryWorkflowResult>;
+public sealed record GetAdminRecoveryUserByPhoneQuery(string PhoneNumber) : IQuery<AdminRecoveryUserStatusResult>;
+public sealed record ApproveAdminAccountRecoveryCommand(Guid RequestId, Guid UserId, string PhoneNumber, string AdminId, string Reason) : ICommand<AdminAccountRecoveryApprovalResult>;
 public sealed record ProtectAccountFromTakeoverCommand(Guid UserId, string ReasonCode) : ICommand<AccountStateResult>;
 public sealed record CompositeLockUserCommand(Guid UserId, string ReasonCode, string? Comment) : ICommand<AccountStateResult>;
 public sealed record CompositeUnlockUserCommand(Guid UserId, string ReasonCode, string? Comment) : ICommand<AccountStateResult>;

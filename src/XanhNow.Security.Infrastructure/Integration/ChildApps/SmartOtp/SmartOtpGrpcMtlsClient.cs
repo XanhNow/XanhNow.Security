@@ -201,8 +201,30 @@ internal sealed class SmartOtpGrpcMtlsClient : ISmartOtpClient, IDisposable
         }
     }
 
-    public ValueTask<ChildCallResult<SmartOtpRevokeAllDevicesResult>> RevokeAllDevicesAsync(SmartOtpRevokeAllDevicesRequest request, CancellationToken cancellationToken)
-        => ValueTask.FromResult(ChildCallResult<SmartOtpRevokeAllDevicesResult>.Failure(new ChildCallError("smart_otp.revoke_all_unsupported", "Smart OTP provider contract does not support revoke-all devices without device ids.", false)));
+    public async ValueTask<ChildCallResult<SmartOtpRevokeAllDevicesResult>> RevokeAllDevicesAsync(SmartOtpRevokeAllDevicesRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await client.RevokeAllOtpDevicesAsync(new SmartOtpGrpc.RevokeAllOtpDevicesRequest
+            {
+                ExternalUserId = ToExternalUserId(request.UserId),
+                ReasonCode = request.ReasonCode,
+                Metadata = NewMetadata("smart-otp-devices-revoke-all")
+            }, cancellationToken: cancellationToken).ResponseAsync.ConfigureAwait(false);
+
+            return ChildCallResult<SmartOtpRevokeAllDevicesResult>.Success(new SmartOtpRevokeAllDevicesResult(
+                response.RevokedCount,
+                DateTimeOffset.FromUnixTimeMilliseconds(response.RevokedAtUnixMs)));
+        }
+        catch (RpcException ex)
+        {
+            return ChildCallResult<SmartOtpRevokeAllDevicesResult>.Failure(ToError(ex));
+        }
+        catch (Exception ex)
+        {
+            return ChildCallResult<SmartOtpRevokeAllDevicesResult>.Failure(DownstreamErrorMapper.FromException(ex, options.Name));
+        }
+    }
 
     public void Dispose() => channel.Dispose();
 

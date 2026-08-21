@@ -28,6 +28,9 @@ public sealed class AuthController : ApiControllerBase
     private readonly ApplicationExecutor<RevealStepUpCommand, StepUpRevealResult> _revealSmartOtpLogin;
     private readonly ApplicationExecutor<CompleteLoginSmartOtpCommand, PasswordLoginResult> _completeSmartOtpLogin;
     private readonly ApplicationExecutor<CompletePasskeyLoginWithGrantCommand, ProtectedGrantResult> _completePasskeyLoginWithGrant;
+    private readonly ApplicationExecutor<RecoverSmartOtpWithPasswordPasskeyCommand, ProtectedGrantResult> _recoverSmartOtp;
+    private readonly ApplicationExecutor<BeginSmartOtpRecoveryEnrollmentCommand, BeginSmartOtpEnrollmentResult> _beginSmartOtpRecoveryEnrollment;
+    private readonly ApplicationExecutor<ConfirmSmartOtpRecoveryEnrollmentCommand, SmartOtpDeviceStateResult> _confirmSmartOtpRecoveryEnrollment;
 
     public AuthController(
         ApplicationExecutor<RegisterCommand, RegisterResult> register,
@@ -41,7 +44,10 @@ public sealed class AuthController : ApiControllerBase
         ApplicationExecutor<StartStepUpCommand, StepUpChallengeResult> startSmartOtpLogin,
         ApplicationExecutor<RevealStepUpCommand, StepUpRevealResult> revealSmartOtpLogin,
         ApplicationExecutor<CompleteLoginSmartOtpCommand, PasswordLoginResult> completeSmartOtpLogin,
-        ApplicationExecutor<CompletePasskeyLoginWithGrantCommand, ProtectedGrantResult> completePasskeyLoginWithGrant)
+        ApplicationExecutor<CompletePasskeyLoginWithGrantCommand, ProtectedGrantResult> completePasskeyLoginWithGrant,
+        ApplicationExecutor<RecoverSmartOtpWithPasswordPasskeyCommand, ProtectedGrantResult> recoverSmartOtp,
+        ApplicationExecutor<BeginSmartOtpRecoveryEnrollmentCommand, BeginSmartOtpEnrollmentResult> beginSmartOtpRecoveryEnrollment,
+        ApplicationExecutor<ConfirmSmartOtpRecoveryEnrollmentCommand, SmartOtpDeviceStateResult> confirmSmartOtpRecoveryEnrollment)
     {
         _register = register;
         _passwordLogin = passwordLogin;
@@ -55,6 +61,9 @@ public sealed class AuthController : ApiControllerBase
         _revealSmartOtpLogin = revealSmartOtpLogin;
         _completeSmartOtpLogin = completeSmartOtpLogin;
         _completePasskeyLoginWithGrant = completePasskeyLoginWithGrant;
+        _recoverSmartOtp = recoverSmartOtp;
+        _beginSmartOtpRecoveryEnrollment = beginSmartOtpRecoveryEnrollment;
+        _confirmSmartOtpRecoveryEnrollment = confirmSmartOtpRecoveryEnrollment;
     }
 
     [AllowAnonymous]
@@ -163,6 +172,33 @@ public sealed class AuthController : ApiControllerBase
     {
         var result = await _completePasskeyLoginWithGrant.ExecuteAsync(new CompletePasskeyLoginWithGrantCommand(request.CeremonyId, request.Credential.GetRawText(), request.Audience), cancellationToken);
         return FromApplicationResult(result, MapGrant);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("login/smart-otp/recovery/reset")]
+    [EndpointMaturity("Current", "auth.login.smart_otp.recovery.reset")]
+    public async Task<ActionResult<ApiResponse<ProtectedGrantResponse>>> RecoverSmartOtpAsync(RecoverSmartOtpRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _recoverSmartOtp.ExecuteAsync(new RecoverSmartOtpWithPasswordPasskeyCommand(request.UserId, request.PhoneNumber, request.Password, request.PasskeyGrant), cancellationToken);
+        return FromApplicationResult(result, MapGrant);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("login/smart-otp/recovery/enroll/begin")]
+    [EndpointMaturity("Current", "auth.login.smart_otp.recovery.enroll.begin")]
+    public async Task<ActionResult<ApiResponse<BeginSmartOtpEnrollmentResponse>>> BeginSmartOtpRecoveryEnrollmentAsync(BeginSmartOtpRecoveryEnrollmentRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _beginSmartOtpRecoveryEnrollment.ExecuteAsync(new BeginSmartOtpRecoveryEnrollmentCommand(request.UserId, request.RecoveryGrant, request.DeviceName, request.Platform, request.AppInstanceIdHash, request.KeyAlgorithm, request.CandidatePublicKeySpki, request.CandidatePublicKeyThumbprint), cancellationToken);
+        return FromApplicationResult(result, x => new BeginSmartOtpEnrollmentResponse(x.EnrollmentId, x.ServerChallenge, x.ChallengeFormatVersion, x.CreatedAtUtc, x.ExpiresAtUtc, x.Status));
+    }
+
+    [AllowAnonymous]
+    [HttpPost("login/smart-otp/recovery/enroll/confirm")]
+    [EndpointMaturity("Current", "auth.login.smart_otp.recovery.enroll.confirm")]
+    public async Task<ActionResult<ApiResponse<SmartOtpDeviceStateResponse>>> ConfirmSmartOtpRecoveryEnrollmentAsync(ConfirmSmartOtpRecoveryEnrollmentRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _confirmSmartOtpRecoveryEnrollment.ExecuteAsync(new ConfirmSmartOtpRecoveryEnrollmentCommand(request.UserId, request.RecoveryGrant, request.EnrollmentId, request.ClientNonce, request.DeviceSignature), cancellationToken);
+        return FromApplicationResult(result, x => new SmartOtpDeviceStateResponse(x.DeviceId, x.DeviceKeyId, x.Status, x.IsEnabled, x.UpdatedAtUtc));
     }
 
     private static DeviceContext? MapDevice(DeviceContextRequest? device)

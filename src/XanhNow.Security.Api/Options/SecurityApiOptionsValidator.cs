@@ -51,6 +51,14 @@ public sealed class SecurityApiOptionsValidator : IValidateOptions<SecurityApiOp
             }
         }
 
+        foreach (var item in options.InternalServiceApiKeyFiles)
+        {
+            if (string.IsNullOrWhiteSpace(item.Key) || string.IsNullOrWhiteSpace(item.Value))
+            {
+                failures.Add("SecurityApi:InternalServiceApiKeyFiles cannot contain empty service names or paths.");
+            }
+        }
+
         if (options.AnonymousRequestsPerMinute <= 0 || options.UserRequestsPerMinute <= 0 || options.ServiceRequestsPerMinute <= 0)
         {
             failures.Add("SecurityApi rate limits must be greater than zero.");

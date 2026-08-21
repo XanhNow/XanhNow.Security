@@ -220,10 +220,15 @@ public static class SecurityApiServiceCollectionExtensions
         services.AddScoped<IRequestHandler<BeginLoginMfaCommand, LoginMfaChallengeResult>, BeginLoginMfaCommandHandler>();
         services.AddScoped<IRequestHandler<CompleteLoginMfaCommand, ProtectedGrantResult>, CompleteLoginMfaCommandHandler>();
         services.AddScoped<IRequestHandler<CompletePasskeyLoginWithGrantCommand, ProtectedGrantResult>, CompletePasskeyLoginWithGrantCommandHandler>();
+        services.AddScoped<IRequestHandler<RecoverSmartOtpWithPasswordPasskeyCommand, ProtectedGrantResult>, RecoverSmartOtpWithPasswordPasskeyCommandHandler>();
+        services.AddScoped<IRequestHandler<BeginSmartOtpRecoveryEnrollmentCommand, BeginSmartOtpEnrollmentResult>, BeginSmartOtpRecoveryEnrollmentCommandHandler>();
+        services.AddScoped<IRequestHandler<ConfirmSmartOtpRecoveryEnrollmentCommand, SmartOtpDeviceStateResult>, ConfirmSmartOtpRecoveryEnrollmentCommandHandler>();
         services.AddScoped<IRequestHandler<IssueTransactionStepUpGrantCommand, ProtectedGrantResult>, IssueTransactionStepUpGrantCommandHandler>();
         services.AddScoped<IRequestHandler<ReportLostPhoneCommand, RecoveryWorkflowResult>, ReportLostPhoneCommandHandler>();
         services.AddScoped<IRequestHandler<StartAccountRecoveryCommand, RecoveryWorkflowResult>, StartAccountRecoveryCommandHandler>();
         services.AddScoped<IRequestHandler<CompleteAccountRecoveryCommand, RecoveryWorkflowResult>, CompleteAccountRecoveryCommandHandler>();
+        services.AddScoped<IRequestHandler<GetAdminRecoveryUserByPhoneQuery, AdminRecoveryUserStatusResult>, GetAdminRecoveryUserByPhoneQueryHandler>();
+        services.AddScoped<IRequestHandler<ApproveAdminAccountRecoveryCommand, AdminAccountRecoveryApprovalResult>, ApproveAdminAccountRecoveryCommandHandler>();
         services.AddScoped<IRequestHandler<ProtectAccountFromTakeoverCommand, AccountStateResult>, ProtectAccountFromTakeoverCommandHandler>();
         services.AddScoped<IRequestHandler<CompositeLockUserCommand, AccountStateResult>, CompositeLockUserCommandHandler>();
         services.AddScoped<IRequestHandler<CompositeUnlockUserCommand, AccountStateResult>, CompositeUnlockUserCommandHandler>();
