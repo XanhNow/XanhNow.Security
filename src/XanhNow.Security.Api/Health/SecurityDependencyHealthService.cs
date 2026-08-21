@@ -112,11 +112,7 @@ public sealed class SecurityDependencyHealthService
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            using var admin = new AdminClientBuilder(new AdminClientConfig
-            {
-                BootstrapServers = _options.Kafka.BootstrapServers,
-                ClientId = _options.Kafka.ClientId + "-health"
-            }).Build();
+            using var admin = new AdminClientBuilder(BuildKafkaAdminConfig()).Build();
             var metadata = admin.GetMetadata(TimeSpan.FromSeconds(2));
             return Task.FromResult(metadata.Brokers.Count > 0 ? Healthy("kafka", $"brokers={metadata.Brokers.Count}") : Unhealthy("kafka", "no_brokers"));
         }
@@ -124,6 +120,51 @@ public sealed class SecurityDependencyHealthService
         {
             return Task.FromResult(Unhealthy("kafka", ex.GetType().Name));
         }
+    }
+
+    private AdminClientConfig BuildKafkaAdminConfig()
+    {
+        var config = new AdminClientConfig
+        {
+            BootstrapServers = _options.Kafka.BootstrapServers,
+            ClientId = _options.Kafka.ClientId + "-health"
+        };
+
+        if (!string.IsNullOrWhiteSpace(_options.Kafka.SecretPath))
+        {
+            var securityProtocol = ReadOptionalKafkaFile(_options.Kafka.SecurityProtocolFile);
+            var saslMechanism = ReadOptionalKafkaFile(_options.Kafka.SaslMechanismFile);
+            var username = ReadOptionalKafkaFile(_options.Kafka.UsernameFile);
+            var password = ReadOptionalKafkaFile(_options.Kafka.PasswordFile);
+            var sslCaLocation = ReadOptionalKafkaFile(_options.Kafka.SslCaLocationFile) ?? ReadOptionalKafkaValue(_options.Kafka.SslCaLocation);
+
+            if (!string.IsNullOrWhiteSpace(securityProtocol))
+            {
+                config.SecurityProtocol = Enum.Parse<SecurityProtocol>(securityProtocol, ignoreCase: true);
+            }
+
+            if (!string.IsNullOrWhiteSpace(saslMechanism))
+            {
+                config.SaslMechanism = Enum.Parse<SaslMechanism>(saslMechanism, ignoreCase: true);
+            }
+
+            if (!string.IsNullOrWhiteSpace(username))
+            {
+                config.SaslUsername = username;
+            }
+
+            if (!string.IsNullOrWhiteSpace(password))
+            {
+                config.SaslPassword = password;
+            }
+
+            if (!string.IsNullOrWhiteSpace(sslCaLocation))
+            {
+                config.SslCaLocation = sslCaLocation;
+            }
+        }
+
+        return config;
     }
 
     private async Task<DependencyHealthResponse> CheckChildAppsAsync(CancellationToken cancellationToken)
@@ -158,6 +199,19 @@ public sealed class SecurityDependencyHealthService
         return parts.Length == 2 && int.TryParse(parts[1], out var port)
             ? (parts[0], port)
             : (endpoint, 6379);
+    }
+
+    private static string? ReadOptionalKafkaFile(string path)
+    {
+        var value = RenderedSecretFile.ReadTrimmed(path);
+        return ReadOptionalKafkaValue(value);
+    }
+
+    private static string? ReadOptionalKafkaValue(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) || string.Equals(value, "n/a", StringComparison.OrdinalIgnoreCase)
+            ? null
+            : value;
     }
 
     private static async Task<bool> CheckEndpointAsync(string host, int port, CancellationToken cancellationToken)

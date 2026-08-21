@@ -20,7 +20,8 @@ $runtime = "s101_xanhnow_auth_security_runtime"
 $migratorPassword = Convert-SecureStringToPlainText (Read-Host "Password $migrator" -AsSecureString)
 $connectionString = "Host=$HostName;Port=$Port;Database=$Database;Username=$migrator;Password=$migratorPassword;SSL Mode=VerifyFull;Root Certificate=$RootCert;Pooling=false;Timeout=15;Command Timeout=60"
 
-Push-Location $ProjectRoot
+$migratorProject = Join-Path $ProjectRoot "src\XanhNow.Security.Migrator"
+Push-Location $migratorProject
 try {
     $env:DOTNET_ENVIRONMENT = "Production"
     $env:ASPNETCORE_ENVIRONMENT = "Production"
@@ -28,7 +29,7 @@ try {
     $env:SecurityMigrator__Credential__Provider = "Environment"
     $env:SecurityMigrator__AllowApply = "true"
 
-    dotnet run --project src\XanhNow.Security.Migrator\XanhNow.Security.Migrator.csproj -- apply
+    dotnet run --project XanhNow.Security.Migrator.csproj -- apply
     if ($LASTEXITCODE -ne 0) { throw "migration failed with exit code $LASTEXITCODE" }
 
     $grantSql = @"

@@ -80,6 +80,7 @@ internal sealed class KafkaSecurityEventProducer : IKafkaSecurityEventProducer, 
                 ?? await ReadOptionalAsync(_options.Kafka.SecretPath, _options.Kafka.SecurityProtocolField, cancellationToken);
             var saslMechanism = ReadOptionalFile(_options.Kafka.SaslMechanismFile)
                 ?? await ReadOptionalAsync(_options.Kafka.SecretPath, _options.Kafka.SaslMechanismField, cancellationToken);
+            var sslCaLocation = ReadOptionalFile(_options.Kafka.SslCaLocationFile) ?? ReadOptionalValue(_options.Kafka.SslCaLocation);
 
             if (!string.IsNullOrWhiteSpace(securityProtocol))
             {
@@ -99,6 +100,11 @@ internal sealed class KafkaSecurityEventProducer : IKafkaSecurityEventProducer, 
             if (!string.IsNullOrWhiteSpace(password))
             {
                 config.SaslPassword = password;
+            }
+
+            if (!string.IsNullOrWhiteSpace(sslCaLocation))
+            {
+                config.SslCaLocation = sslCaLocation;
             }
         }
 
@@ -120,6 +126,11 @@ internal sealed class KafkaSecurityEventProducer : IKafkaSecurityEventProducer, 
     private static string? ReadOptionalFile(string path)
     {
         var value = RenderedSecretFile.ReadTrimmed(path);
+        return ReadOptionalValue(value);
+    }
+
+    private static string? ReadOptionalValue(string? value)
+    {
         return string.IsNullOrWhiteSpace(value) || string.Equals(value, "n/a", StringComparison.OrdinalIgnoreCase)
             ? null
             : value;

@@ -77,8 +77,10 @@ public sealed class KafkaIntegrationOptions
     public string PasswordField { get; set; } = "password";
     public string SecurityProtocolField { get; set; } = "security_protocol";
     public string SaslMechanismField { get; set; } = "sasl_mechanism";
+    public string SslCaLocation { get; set; } = string.Empty;
     public string UsernameFile { get; set; } = string.Empty;
     public string PasswordFile { get; set; } = string.Empty;
     public string SecurityProtocolFile { get; set; } = string.Empty;
     public string SaslMechanismFile { get; set; } = string.Empty;
+    public string SslCaLocationFile { get; set; } = string.Empty;
 }
