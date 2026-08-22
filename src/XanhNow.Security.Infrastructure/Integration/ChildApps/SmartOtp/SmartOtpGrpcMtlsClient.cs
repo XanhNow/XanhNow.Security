@@ -296,7 +296,7 @@ internal sealed class SmartOtpGrpcMtlsClient : ISmartOtpClient, IDisposable
 
     private static SmartOtpGrpc.RequestMetadata NewMetadata(string step) => new()
     {
-        OriginServiceId = "xanhnow-auth-login",
+        OriginServiceId = "xanhnow-security",
         CorrelationId = $"security-{Guid.NewGuid():N}"[..32],
         RequestId = $"{step}-{Guid.NewGuid():N}",
         IdempotencyKey = $"idem-{step}-{Guid.NewGuid():N}"

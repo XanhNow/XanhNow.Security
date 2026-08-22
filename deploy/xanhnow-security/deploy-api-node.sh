@@ -19,6 +19,11 @@ cp "$release_dir/release.json" "$target/release.json"
 chown -R xanhnow:xanhnow "$target"
 chmod -R u=rwX,g=rX,o= "$target"
 ln -sfn "$target" "$app_root/current"
+
+if [ -x /srv/xanhnow/src/XanhNow_Security_App/deploy/xanhnow-security/install-smart-otp-mtls-node.sh ]; then
+  bash /srv/xanhnow/src/XanhNow_Security_App/deploy/xanhnow-security/install-smart-otp-mtls-node.sh
+fi
+
 systemctl daemon-reload
 systemctl restart "$service_name"
 systemctl is-active --quiet "$service_name"
