@@ -191,7 +191,7 @@ public sealed class CompletePasskeyLoginWithGrantCommandHandler : IRequestHandle
 
     public async Task<Result<ProtectedGrantResult>> HandleAsync(CompletePasskeyLoginWithGrantCommand request, CancellationToken cancellationToken)
     {
-        var child = await _passkey.FinishAsync(new PasskeyFinishRequest(Guid.Empty, request.CeremonyId, request.CredentialJson, null), cancellationToken);
+        var child = await _passkey.FinishAsync(new PasskeyFinishRequest(Guid.Empty, request.CeremonyId, request.CredentialJson, FinishPasskeyRegistrationCommandHandler.ToPasskeyDevice(request.DeviceContext)), cancellationToken);
         if (child.IsFailure || child.Value is null)
         {
             return CoreSliceHandler.ChildFailure<ProtectedGrantResult>(child.Error ?? new ChildCallError(SecurityErrorCodes.DownstreamUnavailable, "Passkey login finish failed.", true));

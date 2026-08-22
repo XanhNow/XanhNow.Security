@@ -13,7 +13,7 @@ public sealed record EvaluateSecurityPolicyCommand(Guid? UserId, string PolicyCo
 public sealed record IssueAuthGrantCommand(Guid UserId, string Audience, string Purpose, string AssuranceLevel, TimeSpan Lifetime) : ICommand<ProtectedGrantResult>;
 public sealed record BeginLoginMfaCommand(Guid UserId, string LoginOperationId, string TransactionDigest) : ICommand<LoginMfaChallengeResult>;
 public sealed record CompleteLoginMfaCommand(Guid UserId, string ChallengeId, string TotpCode, string Audience) : ICommand<ProtectedGrantResult>;
-public sealed record CompletePasskeyLoginWithGrantCommand(string CeremonyId, string CredentialJson, string Audience) : ICommand<ProtectedGrantResult>;
+public sealed record CompletePasskeyLoginWithGrantCommand(string CeremonyId, string CredentialJson, string Audience, DeviceContext? DeviceContext) : ICommand<ProtectedGrantResult>;
 public sealed record RecoverSmartOtpWithPasswordPasskeyCommand(Guid UserId, string PhoneNumber, string Password, string PasskeyGrant) : ICommand<ProtectedGrantResult>;
 public sealed record BeginSmartOtpRecoveryEnrollmentCommand(Guid UserId, string RecoveryGrant, string DeviceName, string Platform, string AppInstanceIdHash, string KeyAlgorithm, string CandidatePublicKeySpki, string CandidatePublicKeyThumbprint) : ICommand<BeginSmartOtpEnrollmentResult>;
 public sealed record ConfirmSmartOtpRecoveryEnrollmentCommand(Guid UserId, string RecoveryGrant, string EnrollmentId, string ClientNonce, string DeviceSignature) : ICommand<SmartOtpDeviceStateResult>;

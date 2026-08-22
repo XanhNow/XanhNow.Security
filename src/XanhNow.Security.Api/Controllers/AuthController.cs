@@ -170,7 +170,7 @@ public sealed class AuthController : ApiControllerBase
     [EndpointMaturity("Current", "auth.login.passkey.finish_grant")]
     public async Task<ActionResult<ApiResponse<ProtectedGrantResponse>>> FinishPasskeyLoginWithGrantAsync(PasskeyLoginFinishGrantRequest request, CancellationToken cancellationToken)
     {
-        var result = await _completePasskeyLoginWithGrant.ExecuteAsync(new CompletePasskeyLoginWithGrantCommand(request.CeremonyId, request.Credential.GetRawText(), request.Audience), cancellationToken);
+        var result = await _completePasskeyLoginWithGrant.ExecuteAsync(new CompletePasskeyLoginWithGrantCommand(request.CeremonyId, request.Credential.GetRawText(), request.Audience, MapDevice(request.DeviceContext)), cancellationToken);
         return FromApplicationResult(result, MapGrant);
     }
 
