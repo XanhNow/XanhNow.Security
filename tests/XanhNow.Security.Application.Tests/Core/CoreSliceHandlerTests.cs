@@ -93,6 +93,7 @@ public sealed class CoreSliceHandlerTests
         Assert.True(result.IsSuccess);
         Assert.Equal("Completed", result.Value!.State);
         Assert.Equal(userId, jwt.LastIssueRequest?.UserId);
+        Assert.Equal(["read:user"], jwt.LastIssueRequest?.Scopes);
         Assert.Equal("access", result.Value.Tokens?.AccessToken);
         Assert.Equal("refresh-ref", result.Value.Tokens?.RefreshToken);
         Assert.Equal(userId, result.Value.Identity?.UserId);

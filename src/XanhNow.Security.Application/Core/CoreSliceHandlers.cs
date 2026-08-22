@@ -21,7 +21,7 @@ namespace XanhNow.Security.Application.Core;
 
 internal static class CoreSliceDefaults
 {
-    public static readonly string[] DefaultScopes = ["security.user"];
+    public static readonly string[] DefaultScopes = ["read:user"];
     public const string DefaultAudience = "xanhnow";
     public const string RegistrationIncompleteReason = "registration_passkey_required";
     public const string SmartOtpRequiredReason = "smart_otp_required";
